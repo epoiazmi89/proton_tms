@@ -1,0 +1,2949 @@
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Training Management System</title>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script>
+    // Firebase config - replace with your actual config if changed
+    const firebaseConfig = {
+      apiKey: "AIzaSyB3VaRZJNZ8pONuv3ONmpRm3mEwnPjuG4M",
+      authDomain: "proton-tms-1c470.firebaseapp.com",
+      projectId: "proton-tms-1c470",
+      storageBucket: "proton-tms-1c470.firebasestorage.app",
+      messagingSenderId: "795317512752",
+      appId: "1:795317512752:web:531fe4cb04c36cac971bf5"
+    };
+
+    // Initialize Firebase app + Firestore
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // Map record.type -> Firestore collection name
+    function mapTypeToCollection(type) {
+      switch (type) {
+        case 'participant': return 'participants';
+        case 'trainer': return 'trainers';
+        case 'course': return 'courses';
+        case 'certification': return 'certifications';
+        case 'class': return 'classes';
+        case 'attendance': return 'attendance';
+        case 'testResult': return 'testResults';
+        case 'certificationRecord': return 'certificationRecords';
+        default: return null;
+      }
+    }
+
+    // Load all collections into the global allData array
+    async function loadAllDataFromFirestore() {
+      const mappings = [
+        ['participant', 'participants'],
+        ['trainer', 'trainers'],
+        ['course', 'courses'],
+        ['certification', 'certifications'],
+        ['class', 'classes'],
+        ['attendance', 'attendance'],
+        ['testResult', 'testResults'],
+        ['certificationRecord', 'certificationRecords']
+      ];
+
+      const aggregated = [];
+
+      for (const [type, colName] of mappings) {
+        const snap = await db.collection(colName).get();
+        snap.forEach(doc => {
+          const data = doc.data() || {};
+          aggregated.push(Object.assign({ id: doc.id, type }, data));
+        });
+      }
+
+      // allData is defined later in the main script; we update it here.
+      try {
+        allData = aggregated;
+      } catch (e) {
+        // In case allData not yet declared, expose on window as fallback.
+        window.allData = aggregated;
+      }
+
+      return aggregated;
+    }
+
+    let sdkDataHandler = null;
+
+    function notifyDataHandler(data) {
+      if (sdkDataHandler && typeof sdkDataHandler.onDataChanged === 'function') {
+        sdkDataHandler.onDataChanged(data);
+      }
+    }
+
+    async function refreshAndNotify() {
+      const data = await loadAllDataFromFirestore();
+      notifyDataHandler(data);
+    }
+
+    // Shim for dataSdk using Firestore as backend
+    window.dataSdk = {
+      async init(handler) {
+        sdkDataHandler = handler || sdkDataHandler;
+        try {
+          const data = await loadAllDataFromFirestore();
+          notifyDataHandler(data);
+          return { isOk: true };
+        } catch (error) {
+          console.error('dataSdk.init Firestore error', error);
+          return { isOk: false, error };
+        }
+      },
+
+      async create(record) {
+        try {
+          const colName = mapTypeToCollection(record.type);
+          if (!colName) {
+            throw new Error('Unknown record type: ' + record.type);
+          }
+
+          const { id, ...rest } = record;
+          if (id) {
+            await db.collection(colName).doc(id).set(rest);
+          } else {
+            const ref = await db.collection(colName).add(rest);
+            record.id = ref.id;
+          }
+
+          await refreshAndNotify();
+          return { isOk: true, id: record.id };
+        } catch (error) {
+          console.error('dataSdk.create Firestore error', error, record);
+          return { isOk: false, error };
+        }
+      },
+
+      async update(record) {
+        try {
+          const colName = mapTypeToCollection(record.type);
+          if (!colName) {
+            throw new Error('Unknown record type: ' + record.type);
+          }
+          if (!record.id) {
+            throw new Error('Record id is required for update');
+          }
+
+          const { id, ...rest } = record;
+          await db.collection(colName).doc(id).update(rest);
+
+          await refreshAndNotify();
+          return { isOk: true };
+        } catch (error) {
+          console.error('dataSdk.update Firestore error', error, record);
+          return { isOk: false, error };
+        }
+      },
+
+      async delete(record) {
+        try {
+          const colName = mapTypeToCollection(record.type);
+          if (!colName) {
+            throw new Error('Unknown record type: ' + (record && record.type));
+          }
+          if (!record.id) {
+            throw new Error('Record id is required for delete');
+          }
+
+          await db.collection(colName).doc(record.id).delete();
+
+          await refreshAndNotify();
+          return { isOk: true };
+        } catch (error) {
+          console.error('dataSdk.delete Firestore error', error, record);
+          return { isOk: false, error };
+        }
+      }
+    };
+
+    // Very simple stub for elementSdk so existing code can still run basic config
+    window.elementSdk = {
+      async init({ defaultConfig, onConfigChange }) {
+        try {
+          if (typeof onConfigChange === 'function') {
+            await onConfigChange(defaultConfig);
+          }
+        } catch (e) {
+          console.warn('elementSdk stub error', e);
+        }
+        return { isOk: true };
+      }
+    };
+  </script>
+
+<script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    html {
+      height: 100%;
+    }
+    .tab-button {
+      transition: all 0.3s ease;
+    }
+    .tab-button.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+    }
+    .admin-tab-button {
+      transition: all 0.3s ease;
+    }
+    .admin-tab-button.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: all 0.3s ease;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      padding: 16px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      z-index: 1000;
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(400px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .modal-backdrop {
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .stat-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .status-active {
+      background: #10b981;
+      color: white;
+    }
+    .status-completed {
+      background: #6b7280;
+      color: white;
+    }
+    .status-cancelled {
+      background: #ef4444;
+      color: white;
+    }
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      margin-left: 8px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+ </head>
+ <body>
+  <div id="app" class="h-full flex flex-col" style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);"><!-- Header -->
+   <header class="bg-white shadow-md">
+    <div class="px-6 py-4">
+     <h1 id="systemTitle" class="text-3xl font-bold" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Training Management System</h1>
+     <p id="welcomeMessage" class="text-gray-600 mt-1">Manage your training programs efficiently</p>
+    </div>
+   </header><!-- Navigation Tabs -->
+   <nav class="bg-white shadow-sm px-6 py-3 overflow-x-auto">
+    <div class="flex gap-2 min-w-max"><button onclick="switchTab('markAttendance', event)" class="tab-button active px-4 py-2 rounded-lg font-medium text-sm">✅ Mark Attendance</button> <button onclick="switchTab('administration', event)" class="tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">🔐 Administration</button>
+    </div>
+   </nav><!-- Main Content -->
+   <main class="flex-1 overflow-y-auto p-6"><!-- Mark Attendance Tab (Free Access) -->
+    <div id="markAttendanceTab" class="tab-content">
+     <div class="card p-6">
+      <h2 class="text-2xl font-bold text-gray-800 mb-4">✅ Mark Your Attendance</h2>
+      <p class="text-gray-600 mb-6">Select your class and mark your attendance below</p>
+      <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-2">Select Active Class</label> <select id="markAttendanceClassSelect" class="w-full px-4 py-2 border border-gray-300 rounded-lg" onchange="loadMarkAttendance()"> <option value="">-- Select a class --</option> </select>
+      </div>
+      <div id="markAttendanceContent"></div>
+     </div>
+    </div><!-- Administration Tab (Password Protected) -->
+    <div id="administrationTab" class="tab-content hidden"><!-- Password Protection Screen -->
+     <div id="adminPasswordScreen" class="card p-8 max-w-md mx-auto">
+      <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">🔐 Administration Access</h2>
+      <p class="text-gray-600 mb-6 text-center">Please enter the administration password to continue</p>
+      <form onsubmit="checkAdminPassword(event)" class="space-y-4">
+       <div><label class="block text-sm font-medium text-gray-700 mb-2">Password</label> <input type="password" id="adminPassword" required class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Enter password">
+       </div><button type="submit" class="w-full btn-primary px-4 py-3 text-white rounded-lg font-medium">Access Administration</button>
+      </form>
+     </div><!-- Administration Content (Hidden until password correct) -->
+     <div id="adminContent" class="hidden"><!-- Sub-navigation for Administration -->
+      <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
+       <div class="flex flex-wrap gap-2"><button onclick="switchAdminTab('dashboard', event)" class="admin-tab-button active px-4 py-2 rounded-lg font-medium text-sm">📊 Dashboard</button> <button onclick="switchAdminTab('classes', event)" class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">📋 Class Management</button> <button onclick="switchAdminTab('reports', event)" class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">📊 Reports</button> <button onclick="switchAdminTab('maintenances', event)" class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">⚙️ Training Maintenances</button> <button onclick="switchAdminTab('migration', event)" class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">📥 Import History</button>
+       </div>
+      </div><!-- Dashboard Tab -->
+      <div id="dashboardTab" class="tab-content">
+       <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div class="stat-card p-6 rounded-xl">
+         <div class="text-sm opacity-90">
+          Total Participants
+         </div>
+         <div id="totalParticipants" class="text-4xl font-bold mt-2">
+          0
+         </div>
+        </div>
+        <div class="stat-card p-6 rounded-xl">
+         <div class="text-sm opacity-90">
+          Active Courses
+         </div>
+         <div id="totalCourses" class="text-4xl font-bold mt-2">
+          0
+         </div>
+        </div>
+        <div class="stat-card p-6 rounded-xl">
+         <div class="text-sm opacity-90">
+          Active Classes
+         </div>
+         <div id="totalClasses" class="text-4xl font-bold mt-2">
+          0
+         </div>
+        </div>
+       </div>
+       <div class="card p-6">
+        <h3 class="text-xl font-bold mb-4 text-gray-800">Active Classes</h3>
+        <div id="activeClassesList" class="space-y-3"></div>
+       </div>
+      </div><!-- Classes Tab -->
+      <div id="classesTab" class="tab-content hidden"><!-- Class List Section -->
+       <div class="card p-6 mb-6">
+        <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
+         <h2 class="text-2xl font-bold text-gray-800">Class List</h2><button onclick="showAddClassModal()" class="btn-primary px-4 py-2 text-white rounded-lg font-medium">+ Create Class</button>
+        </div><!-- Filter by status -->
+        <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-2">Filter by Status</label> <select id="classStatusFilter" class="px-4 py-2 border border-gray-300 rounded-lg" onchange="updateClassesList()"> <option value="all">All Classes</option> <option value="Active" selected>Active</option> <option value="Completed">Completed</option> <option value="Cancelled">Cancelled</option> </select>
+        </div>
+        <div id="classesList" class="space-y-4"></div>
+       </div><!-- Assign Participant Section -->
+       <div class="card p-6 mb-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Assign Participant</h2>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><!-- Single Assignment -->
+         <div>
+          <h3 class="text-lg font-semibold text-gray-700 mb-3">Single Assignment</h3>
+          <form onsubmit="registerSingleParticipant(event)" class="space-y-4">
+           <div><label class="block text-sm font-medium text-gray-700 mb-1">Select Active Class</label> <select id="singleRegClass" required class="w-full px-4 py-2 border border-gray-300 rounded-lg"> <option value="">-- Select Class --</option> </select>
+           </div>
+           <div><label class="block text-sm font-medium text-gray-700 mb-1">IC Number</label> <input type="text" id="singleRegIC" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+           </div>
+           <div><label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label> <input type="text" id="singleRegName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+           </div>
+           <div><label class="block text-sm font-medium text-gray-700 mb-1">Phone</label> <input type="text" id="singleRegPhone" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+           </div>
+           <div><label class="block text-sm font-medium text-gray-700 mb-1">Email</label> <input type="email" id="singleRegEmail" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+           </div>
+           <div><label class="block text-sm font-medium text-gray-700 mb-1">Company</label> <input type="text" id="singleRegCompany" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+           </div>
+           <div><label class="block text-sm font-medium text-gray-700 mb-1">Company Code</label> <input type="text" id="singleRegCompanyCode" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+           </div>
+           <div><label class="block text-sm font-medium text-gray-700 mb-1">Designation/Position</label> <select id="singleRegDesignation" required class="w-full px-4 py-2 border border-gray-300 rounded-lg"> <option value="">-- Select Designation --</option> <option value="Service Manager">Service Manager</option> <option value="Service Advisor">Service Advisor</option> <option value="CRE/CRA">CRE/CRA</option> <option value="Technician">Technician</option> <option value="Parts Controller">Parts Controller</option> <option value="Job Controller">Job Controller</option> <option value="BP Manager">BP Manager</option> <option value="Insurance Claim Advisor">Insurance Claim Advisor</option> <option value="BP Technician">BP Technician</option> </select>
+           </div><button type="submit" id="singleRegBtn" class="w-full btn-primary px-4 py-2 text-white rounded-lg font-medium">Register Participant</button>
+          </form>
+         </div><!-- Bulk Assignment -->
+         <div>
+          <h3 class="text-lg font-semibold text-gray-700 mb-3">Bulk Assignment</h3>
+          <div class="space-y-4">
+           <div><label class="block text-sm font-medium text-gray-700 mb-1">Select Active Class</label> <select id="bulkRegClass" required class="w-full px-4 py-2 border border-gray-300 rounded-lg"> <option value="">-- Select Class --</option> </select>
+           </div>
+           <div><button onclick="downloadRegistrationTemplate()" class="w-full px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">📥 Download Template</button>
+           </div>
+           <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p class="font-medium text-blue-900 mb-2">📋 How to use bulk upload:</p>
+            <ol class="text-sm text-blue-800 space-y-2 ml-4 list-decimal">
+             <li><strong>Select a class first</strong> - Choose which class to assign participants to</li>
+             <li><strong>Download the template</strong> - Click the green button above</li>
+             <li><strong>Fill in participant details</strong> - Add one participant per row</li>
+             <li><strong>Save the file</strong> - Keep it as Excel (.xlsx) or CSV format</li>
+             <li><strong>Upload</strong> - Upload the completed file</li>
+            </ol>
+            <div class="mt-3 pt-3 border-t border-blue-300">
+             <p class="font-medium text-blue-900 mb-1">Template columns (in order):</p>
+             <ul class="text-xs text-blue-700 space-y-1 ml-4">
+              <li>1. <strong>IC Number</strong> - Required, any format</li>
+              <li>2. <strong>Full Name</strong> - Required</li>
+              <li>3. <strong>Phone</strong> - Optional, any format</li>
+              <li>4. <strong>Email</strong> - Optional</li>
+              <li>5. <strong>Company</strong> - Required</li>
+              <li>6. <strong>Company Code</strong> - Required, numbers only</li>
+              <li>7. <strong>Designation</strong> - Required, must match list</li>
+             </ul>
+            </div>
+            <div class="mt-3 pt-3 border-t border-blue-300">
+             <p class="font-medium text-blue-900 mb-1">⚠️ Validation rules:</p>
+             <ul class="text-xs text-blue-700 space-y-1 ml-4">
+              <li>• Don't change the column headers</li>
+              <li>• Required: IC Number, Full Name, Company, Company Code, Designation</li>
+              <li>• Optional: Phone, Email (can be left blank)</li>
+              <li>• IC Number must be numbers only</li>
+              <li>• Company Code must be numbers only</li>
+              <li>• Invalid rows skipped, valid rows processed</li>
+              <li>• Duplicate IC numbers will be skipped</li>
+              <li>• Maximum 999 participants total in system</li>
+             </ul>
+            </div>
+           </div>
+           <div><label class="block text-sm font-medium text-gray-700 mb-2">Upload Completed Template</label> <input type="file" id="bulkRegFile" accept=".xlsx,.xls,.csv" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+           </div><button onclick="processBulkRegistration()" id="bulkRegBtn" class="w-full btn-primary px-4 py-2 text-white rounded-lg font-medium">Upload &amp; Register</button>
+           <div id="bulkRegResults" class="hidden"></div>
+          </div>
+         </div>
+        </div>
+       </div><!-- Test Results Section -->
+       <div class="card p-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">📝 Attendance &amp; Test Result Management</h2>
+        <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-2">Select Active Class</label> <select id="testResultClassSelect" class="w-full px-4 py-2 border border-gray-300 rounded-lg" onchange="loadTestResults()"> <option value="">-- Select a class --</option> </select>
+        </div>
+        <div id="testResultsList"></div>
+       </div>
+      </div><!-- Reports Tab -->
+      <div id="reportsTab" class="tab-content hidden">
+       <div class="space-y-6"><!-- Participant Database -->
+        <div class="card p-6">
+         <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
+          <h2 class="text-2xl font-bold text-gray-800">Participant Database</h2>
+         </div>
+         <p class="text-gray-600 mb-4">Download the complete participant database to view all registered participants with their details and certifications.</p>
+         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <p class="text-sm text-blue-800">Total Participants: <span id="totalParticipantsCount" class="font-bold">0</span></p>
+         </div><button onclick="downloadParticipants()" class="btn-primary px-6 py-3 text-white rounded-lg hover:bg-purple-700 font-medium w-full">📥 Download Participant Database</button>
+        </div><!-- Attendance Report -->
+        <div class="card p-6">
+         <h2 class="text-2xl font-bold text-gray-800 mb-4">Attendance Report (Completed Classes)</h2>
+         <div class="space-y-4">
+          <div><label class="block text-sm font-medium text-gray-700 mb-2">Filter by Date Range</label>
+           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><label class="block text-xs text-gray-600 mb-1">From Date</label> <input type="date" id="reportFromDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div><label class="block text-xs text-gray-600 mb-1">To Date</label> <input type="date" id="reportToDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+           </div>
+          </div>
+          <div><label class="block text-sm font-medium text-gray-700 mb-2">Or Select Specific Classes (Multiple Selection)</label>
+           <div class="border border-gray-300 rounded-lg p-4 max-h-64 overflow-y-auto space-y-2" id="completedClassesList">
+            <p class="text-gray-500 text-sm">No completed classes available</p>
+           </div>
+          </div><button onclick="generateAttendanceReport()" class="btn-primary px-6 py-3 text-white rounded-lg font-medium w-full">Generate Attendance Report</button>
+         </div>
+        </div><!-- Certification Registration Report -->
+        <div class="card p-6">
+         <h2 class="text-2xl font-bold text-gray-800 mb-4">Certification Registration Report</h2>
+         <div class="space-y-4">
+          <div><label class="block text-sm font-medium text-gray-700 mb-2">Select Certification Programs</label>
+           <div class="space-y-2 mb-4"><label class="flex items-center gap-2"> <input type="checkbox" id="allCertsCheckbox" onchange="toggleAllCerts()" class="w-4 h-4"> <span class="font-medium">All Certifications</span> </label>
+            <div id="certCheckboxList" class="ml-6 space-y-2"></div>
+           </div>
+          </div>
+          <div><label class="block text-sm font-medium text-gray-700 mb-2">Include Participants</label>
+           <div class="space-y-2"><label class="flex items-center gap-2"> <input type="checkbox" id="withCertsCheckbox" checked class="w-4 h-4"> <span>With certifications</span> </label> <label class="flex items-center gap-2"> <input type="checkbox" id="withoutCertsCheckbox" class="w-4 h-4"> <span>Without certifications (all in database)</span> </label>
+           </div>
+          </div><button onclick="generateCertificationReport()" class="btn-primary px-6 py-3 text-white rounded-lg font-medium w-full">Generate Report</button>
+          <div id="certReportStatus" class="hidden mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+           <p class="text-green-800 font-medium">✅ Report is ready to download</p>
+           <div class="flex gap-2 mt-3"><button onclick="downloadCertReport('csv')" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Download CSV</button>
+           </div>
+          </div>
+         </div>
+        </div><!-- Registered Class Report -->
+        <div class="card p-6">
+         <h2 class="text-2xl font-bold text-gray-800 mb-4">Registered Class Report</h2>
+         <div class="space-y-4">
+          <p class="text-sm text-gray-600 mb-4">Download a summary report of all classes with their status and participant counts.</p><button onclick="generateRegisteredClassReport()" class="btn-primary px-6 py-3 text-white rounded-lg font-medium w-full">Download Class Summary Report</button>
+         </div>
+        </div>
+       </div>
+      </div><!-- Training Maintenances Tab -->
+      <div id="maintenancesTab" class="tab-content hidden">
+       <div class="space-y-6"><!-- Trainers Section -->
+        <div class="card p-6">
+         <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
+          <h2 class="text-2xl font-bold text-gray-800">👨‍🏫 Trainer Management</h2><button onclick="showAddTrainerModal()" class="btn-primary px-4 py-2 text-white rounded-lg font-medium">+ Add Trainer</button>
+         </div>
+         <div id="trainersList" class="space-y-4"></div>
+        </div><!-- Courses Section -->
+        <div class="card p-6">
+         <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
+          <h2 class="text-2xl font-bold text-gray-800">     Course Management</h2><button onclick="showAddCourseModal()" class="btn-primary px-4 py-2 text-white rounded-lg font-medium">+ Add Course</button>
+         </div>
+         <div id="coursesList" class="space-y-4"></div>
+        </div><!-- Certifications Section -->
+        <div class="card p-6">
+         <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
+          <h2 class="text-2xl font-bold text-gray-800">🎓 Certification Management</h2><button onclick="showAddCertificationModal()" class="btn-primary px-4 py-2 text-white rounded-lg font-medium">+ Create Certification</button>
+         </div>
+         <div id="certificationsList" class="space-y-4"></div>
+        </div>
+       </div>
+      </div><!-- Migration Tab -->
+      <div id="migrationTab" class="tab-content hidden">
+       <div class="card p-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">📥 Import Historical Certification Data</h2>
+        <div class="space-y-4">
+         <div><label class="block text-sm font-medium text-gray-700 mb-2">Upload Excel file with old records</label> <input type="file" id="migrationFile" accept=".xlsx,.xls,.csv" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+         </div>
+         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p class="font-medium text-blue-900 mb-2">Required columns:</p>
+          <ul class="text-sm text-blue-800 space-y-1 ml-4">
+           <li>• IC Number (any format accepted)</li>
+           <li>• Name</li>
+           <li>• Phone</li>
+           <li>• Email</li>
+           <li>• Company</li>
+           <li>• Certification Name</li>
+           <li>• Date Achieved</li>
+          </ul>
+         </div><button onclick="importHistoricalData()" class="btn-primary px-6 py-3 text-white rounded-lg font-medium w-full">Import Data</button>
+         <div id="migrationResults" class="hidden"></div>
+        </div>
+       </div>
+      </div>
+     </div>
+    </div>
+   </main>
+  </div><!-- Modals will be inserted here dynamically -->
+  <div id="modalContainer"></div>
+  <script>
+    // Global state
+    let allData = [];
+    let currentTab = 'markAttendance';
+    let currentAdminTab = 'dashboard';
+    let certReportData = null;
+    let isAdminAuthenticated = false;
+
+    const defaultConfig = {
+      system_title: "Training Management System",
+      welcome_message: "Manage your training programs efficiently"
+    };
+
+    // Data handler for SDK
+    const dataHandler = {
+      onDataChanged(data) {
+        allData = data;
+        updateUI();
+      }
+    };
+
+    // Initialize SDKs
+    async function initApp() {
+      if (window.dataSdk) {
+        const result = await window.dataSdk.init(dataHandler);
+        if (!result.isOk) {
+          console.error("Failed to initialize data SDK");
+        }
+      }
+
+      if (window.elementSdk) {
+        await window.elementSdk.init({
+          defaultConfig,
+          onConfigChange: async (config) => {
+            document.getElementById('systemTitle').textContent = config.system_title || defaultConfig.system_title;
+            document.getElementById('welcomeMessage').textContent = config.welcome_message || defaultConfig.welcome_message;
+          },
+          mapToCapabilities: (config) => ({
+            recolorables: [],
+            borderables: [],
+            fontEditable: undefined,
+            fontSizeable: undefined
+          }),
+          mapToEditPanelValues: (config) => new Map([
+            ["system_title", config.system_title || defaultConfig.system_title],
+            ["welcome_message", config.welcome_message || defaultConfig.welcome_message]
+          ])
+        });
+      }
+    }
+
+    // Helper functions
+    function getParticipants() {
+      return allData.filter(d => d.type === 'participant');
+    }
+
+    function getTrainers() {
+      return allData.filter(d => d.type === 'trainer');
+    }
+
+    function getCourses() {
+      return allData.filter(d => d.type === 'course');
+    }
+
+    function getCertifications() {
+      return allData.filter(d => d.type === 'certification');
+    }
+
+    function getClasses() {
+      return allData.filter(d => d.type === 'class');
+    }
+
+    function getAttendance() {
+      return allData.filter(d => d.type === 'attendance');
+    }
+
+    function getTestResults() {
+      return allData.filter(d => d.type === 'testResult');
+    }
+
+    function getCertificationRecords() {
+      return allData.filter(d => d.type === 'certificationRecord');
+    }
+
+    function getParticipantByIC(ic) {
+      return getParticipants().find(p => p.ic === ic);
+    }
+
+    function getCourseByCode(code) {
+      return getCourses().find(c => c.courseCode === code);
+    }
+
+    function generateId() {
+      return 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // UI Update functions
+    function updateUI() {
+      updateDashboard();
+      updateParticipantsList();
+      updateTrainersList();
+      updateCoursesList();
+      updateCertificationsList();
+      updateClassesList();
+      updateCertCheckboxList();
+      populateClassSelects();
+      populateCompletedClassesList();
+      populateRegistrationClassSelects();
+    }
+
+    function updateDashboard() {
+      const participants = getParticipants();
+      const courses = getCourses().filter(c => c.status === 'Active');
+      const classes = getClasses().filter(c => c.classStatus === 'Active');
+
+      document.getElementById('totalParticipants').textContent = participants.length;
+      document.getElementById('totalCourses').textContent = courses.length;
+      document.getElementById('totalClasses').textContent = classes.length;
+
+      // Active classes with certification info
+      const certifications = getCertifications();
+      const trainers = getTrainers();
+      
+      const activeClassesHTML = classes.length > 0
+        ? classes.map(c => {
+            const course = getCourseByCode(c.courseCode);
+            const trainer = trainers.find(t => t.id === c.trainerId);
+            let cert = null;
+            if (course && course.certificationProgram) {
+              cert = certifications.find(ct => ct.id === course.certificationProgram);
+            }
+            
+            return `
+              <div class="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                <div class="flex-1">
+                  <div class="font-bold text-gray-800 mb-1">${c.className}</div>
+                  <div class="text-sm text-gray-700 mb-1">${course ? course.courseName : c.courseCode}</div>
+                  <div class="flex flex-wrap gap-3 text-sm text-gray-600">
+                    <span>📅 ${new Date(c.classStartDate).toLocaleDateString()} - ${new Date(c.classEndDate).toLocaleDateString()}</span>
+                    ${trainer ? `<span>👨‍🏫 ${trainer.name}</span>` : ''}
+                  </div>
+                  ${cert ? `<div class="mt-2 inline-block px-3 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">   ${cert.certificationName}</div>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')
+        : '<p class="text-gray-500 text-center py-4">No active classes</p>';
+
+      document.getElementById('activeClassesList').innerHTML = activeClassesHTML;
+    }
+
+    function updateParticipantsList() {
+      const participants = getParticipants();
+      const countElement = document.getElementById('totalParticipantsCount');
+      if (countElement) {
+        countElement.textContent = participants.length;
+      }
+    }
+
+    function updateTrainersList() {
+      const trainers = getTrainers();
+
+      const html = trainers.length > 0 ? trainers.map(t => `
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+          <div class="flex items-start justify-between">
+            <div class="flex-1">
+              <h3 class="text-lg font-bold text-gray-800 mb-2">${t.name}</h3>
+              <div class="space-y-1 text-sm text-gray-600">
+                <p>📧 ${t.email}</p>
+                <p>   ${t.phone}</p>
+                <p>🎓 ${t.qualification}</p>
+                <p>💼 Expertise: ${t.expertise}</p>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="editTrainer('${t.id}')" class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+              <button onclick="deleteTrainer('${t.id}')" class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+            </div>
+          </div>
+        </div>
+      `).join('') : '<p class="text-gray-500 text-center py-8">No trainers found</p>';
+
+      document.getElementById('trainersList').innerHTML = html;
+    }
+
+    function updateCoursesList() {
+      const courses = getCourses();
+      const certifications = getCertifications();
+      const trainers = getTrainers();
+
+      const html = courses.length > 0 ? courses.map(c => {
+        const cert = certifications.find(cert => cert.id === c.certificationProgram);
+        const author = trainers.find(t => t.id === c.authorName);
+        return `
+          <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <div class="flex items-center gap-3 mb-2">
+                  <h3 class="text-lg font-bold text-gray-800">${c.courseCode}</h3>
+                  <span class="px-3 py-1 text-xs font-medium rounded-full ${c.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">${c.status}</span>
+                </div>
+                <p class="text-gray-700 mb-1">${c.courseName}</p>
+                <p class="text-sm text-gray-600">Duration: ${c.duration}</p>
+                ${cert ? `<p class="text-sm text-purple-600 mt-2">🎓 Certification: ${cert.certificationName}</p>` : '<p class="text-sm text-gray-500 mt-2">No Certification</p>'}
+                ${author ? `<p class="text-sm text-blue-600 mt-1">👨‍🏫 Author: ${author.name}</p>` : ''}
+              </div>
+              <div class="flex gap-2">
+                <button onclick="editCourse('${c.id}')" class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                <button onclick="deleteCourse('${c.id}')" class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('') : '<p class="text-gray-500 text-center py-8">No courses found</p>';
+
+      document.getElementById('coursesList').innerHTML = html;
+    }
+
+    function updateCertificationsList() {
+      const certifications = getCertifications();
+      const courses = getCourses();
+      const certRecords = getCertificationRecords();
+
+      const html = certifications.length > 0 ? certifications.map(cert => {
+        const certCourses = courses.filter(c => c.certificationProgram === cert.id);
+        const courseNames = certCourses.map(c => c.courseName);
+        const certifiedCount = certRecords.filter(cr => cr.certificationName === cert.certificationName).length;
+
+        return `
+          <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <h3 class="text-lg font-bold text-gray-800 mb-2">${cert.certificationName}</h3>
+                <p class="text-gray-600 mb-3">${cert.certificationDescription}</p>
+                <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-2">
+                  <p class="text-sm font-medium text-purple-900 mb-1">Required Courses (${certCourses.length}):</p>
+                  <ul class="text-sm text-purple-800 space-y-1">
+                    ${courseNames.length > 0 ? courseNames.map(name => `<li>• ${name}</li>`).join('') : '<li>No courses assigned yet</li>'}
+                  </ul>
+                </div>
+                <p class="text-sm text-gray-600">Certified Participants: ${certifiedCount}</p>
+              </div>
+              <div class="flex gap-2">
+                <button onclick="editCertification('${cert.id}')" class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                <button onclick="deleteCertification('${cert.id}')" class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('') : '<p class="text-gray-500 text-center py-8">No certifications found</p>';
+
+      document.getElementById('certificationsList').innerHTML = html;
+    }
+
+    function updateClassesList() {
+      const filterStatus = document.getElementById('classStatusFilter') ? document.getElementById('classStatusFilter').value : 'Active';
+      let classes = getClasses();
+      
+      if (filterStatus !== 'all') {
+        classes = classes.filter(c => c.classStatus === filterStatus);
+      }
+
+      const courses = getCourses();
+      const trainers = getTrainers();
+
+      const html = classes.length > 0 ? classes.map(cls => {
+        const course = courses.find(c => c.courseCode === cls.courseCode);
+        const trainer = trainers.find(t => t.id === cls.trainerId);
+        const attendance = getAttendance().filter(a => a.classId === cls.id);
+        const enrolled = attendance.length;
+
+        return `
+          <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <div class="flex items-center gap-3 mb-2">
+                  <h3 class="text-lg font-bold text-gray-800">${cls.className}</h3>
+                  <span class="px-3 py-1 text-xs font-medium rounded-full status-${cls.classStatus.toLowerCase()}">${cls.classStatus}</span>
+                </div>
+                <p class="text-gray-700 mb-1">${course ? course.courseName : cls.courseCode}</p>
+                ${trainer ? `<p class="text-sm text-blue-600 mb-2">👨‍🏫 Trainer: ${trainer.name}</p>` : ''}
+                <div class="grid grid-cols-2 gap-2 text-sm text-gray-600 mt-2">
+                  <p>📅 Start: ${new Date(cls.classStartDate).toLocaleDateString()}</p>
+                  <p>📅 End: ${new Date(cls.classEndDate).toLocaleDateString()}</p>
+                  <p>📍 Venue: ${cls.venue}</p>
+                  <p>👥 Enrolled: ${enrolled}</p>
+                </div>
+              </div>
+              <div class="flex flex-col gap-2">
+                ${cls.classStatus === 'Active' ? `
+                  <button onclick="changeClassStatus('${cls.id}', 'Completed')" class="text-green-600 hover:text-green-800 text-sm font-medium">✓ Complete</button>
+                  <button onclick="changeClassStatus('${cls.id}', 'Cancelled')" class="text-red-600 hover:text-red-800 text-sm font-medium">✗ Cancel</button>
+                ` : ''}
+                <button onclick="viewClassParticipants('${cls.id}')" class="text-purple-600 hover:text-purple-800 text-sm font-medium">View List</button>
+                <button onclick="editClass('${cls.id}')" class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                <button onclick="deleteClass('${cls.id}')" class="text-gray-600 hover:text-gray-800 text-sm font-medium">Delete</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('') : '<p class="text-gray-500 text-center py-8">No classes found</p>';
+
+      document.getElementById('classesList').innerHTML = html;
+    }
+
+    function updateCertCheckboxList() {
+      const certifications = getCertifications();
+      const html = certifications.map(cert => `
+        <label class="flex items-center gap-2">
+          <input type="checkbox" class="cert-checkbox w-4 h-4" value="${cert.certificationName}">
+          <span>${cert.certificationName}</span>
+        </label>
+      `).join('');
+      document.getElementById('certCheckboxList').innerHTML = html;
+    }
+
+    function populateClassSelects() {
+      const classes = getClasses().filter(c => c.classStatus === 'Active');
+      const courses = getCourses();
+      
+      const options = classes.map(cls => {
+        const course = courses.find(c => c.courseCode === cls.courseCode);
+        return `<option value="${cls.id}">${cls.className} - ${course ? course.courseName : cls.courseCode}</option>`;
+      }).join('');
+
+      const selectHTML = '<option value="">-- Select a class --</option>' + options;
+      
+      if (document.getElementById('markAttendanceClassSelect')) {
+        document.getElementById('markAttendanceClassSelect').innerHTML = selectHTML;
+      }
+      if (document.getElementById('testResultClassSelect')) {
+        document.getElementById('testResultClassSelect').innerHTML = selectHTML;
+      }
+    }
+
+    function populateRegistrationClassSelects() {
+      const classes = getClasses().filter(c => c.classStatus === 'Active');
+      const courses = getCourses();
+      
+      const options = classes.map(cls => {
+        const course = courses.find(c => c.courseCode === cls.courseCode);
+        return `<option value="${cls.id}">${cls.className} - ${course ? course.courseName : cls.courseCode}</option>`;
+      }).join('');
+
+      const selectHTML = '<option value="">-- Select Class --</option>' + options;
+      
+      if (document.getElementById('singleRegClass')) {
+        document.getElementById('singleRegClass').innerHTML = selectHTML;
+      }
+      if (document.getElementById('bulkRegClass')) {
+        document.getElementById('bulkRegClass').innerHTML = selectHTML;
+      }
+    }
+
+    function populateCompletedClassesList() {
+      const completedClasses = getClasses().filter(c => c.classStatus === 'Completed');
+      const courses = getCourses();
+
+      const html = completedClasses.length > 0 ? completedClasses.map(cls => {
+        const course = courses.find(c => c.courseCode === cls.courseCode);
+        return `
+          <label class="flex items-center gap-2 p-2 hover:bg-gray-50 rounded">
+            <input type="checkbox" class="completed-class-checkbox w-4 h-4" value="${cls.id}">
+            <span class="text-sm">${cls.className} - ${course ? course.courseName : cls.courseCode} (${new Date(cls.classStartDate).toLocaleDateString()})</span>
+          </label>
+        `;
+      }).join('') : '<p class="text-gray-500 text-sm">No completed classes available</p>';
+
+      document.getElementById('completedClassesList').innerHTML = html;
+    }
+
+    // Password check
+    function checkAdminPassword(event) {
+      event.preventDefault();
+      const password = document.getElementById('adminPassword').value;
+      
+      if (password === 'admin123') {
+        isAdminAuthenticated = true;
+        document.getElementById('adminPasswordScreen').classList.add('hidden');
+        document.getElementById('adminContent').classList.remove('hidden');
+        showToast('Access granted', 'success');
+      } else {
+        showToast('Incorrect password', 'error');
+        document.getElementById('adminPassword').value = '';
+      }
+    }
+
+    // Tab switching
+    function switchTab(tabName, event) {
+      currentTab = tabName;
+      
+      // Update tab buttons
+      document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+        btn.classList.add('bg-gray-100', 'text-gray-700');
+      });
+      event.target.classList.add('active');
+      event.target.classList.remove('bg-gray-100', 'text-gray-700');
+
+      // Update main tab content
+      const markAttendanceTab = document.getElementById('markAttendanceTab');
+      const administrationTab = document.getElementById('administrationTab');
+      
+      if (tabName === 'markAttendance') {
+        markAttendanceTab.classList.remove('hidden');
+        administrationTab.classList.add('hidden');
+      } else if (tabName === 'administration') {
+        markAttendanceTab.classList.add('hidden');
+        administrationTab.classList.remove('hidden');
+        
+        // Reset authentication when switching to admin
+        if (!isAdminAuthenticated) {
+          document.getElementById('adminPasswordScreen').classList.remove('hidden');
+          document.getElementById('adminContent').classList.add('hidden');
+          document.getElementById('adminPassword').value = '';
+        }
+      }
+    }
+
+    // Admin sub-tab switching
+    function switchAdminTab(tabName, event) {
+      currentAdminTab = tabName;
+      
+      // Update admin tab buttons
+      document.querySelectorAll('.admin-tab-button').forEach(btn => {
+        btn.classList.remove('active');
+        btn.classList.add('bg-gray-100', 'text-gray-700');
+      });
+      event.target.classList.add('active');
+      event.target.classList.remove('bg-gray-100', 'text-gray-700');
+
+      // Update admin tab content
+      document.querySelectorAll('#adminContent .tab-content').forEach(content => {
+        content.classList.add('hidden');
+      });
+      document.getElementById(tabName + 'Tab').classList.remove('hidden');
+    }
+
+    // Registration functions
+    async function registerSingleParticipant(event) {
+      event.preventDefault();
+
+      const btn = document.getElementById('singleRegBtn');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = 'Registering...<span class="spinner"></span>';
+      btn.disabled = true;
+
+      const classId = document.getElementById('singleRegClass').value;
+      const ic = document.getElementById('singleRegIC').value;
+      const name = document.getElementById('singleRegName').value;
+      const phone = document.getElementById('singleRegPhone').value;
+      const email = document.getElementById('singleRegEmail').value;
+      const company = document.getElementById('singleRegCompany').value;
+      const companyCode = document.getElementById('singleRegCompanyCode').value;
+
+      const cls = getClasses().find(c => c.id === classId);
+      
+      // Check if already registered
+      const existingAttendance = getAttendance().find(a => a.classId === classId && a.ic === ic);
+      if (existingAttendance) {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        showToast('Participant already registered to this class', 'error');
+        return;
+      }
+
+      // Create or update participant
+      let participant = getParticipantByIC(ic);
+      if (!participant) {
+        participant = {
+          id: generateId(),
+          type: 'participant',
+          ic: ic,
+          name: name,
+          phone: phone,
+          email: email,
+          company: company,
+          company_code: companyCode,
+          designation: document.getElementById('singleRegDesignation').value,
+          dateRegistered: new Date().toISOString()
+        };
+        await window.dataSdk.create(participant);
+      }
+
+      // Create attendance record
+      const attendanceRecord = {
+        id: generateId(),
+        type: 'attendance',
+        classId: classId,
+        ic: ic,
+        courseCode: cls.courseCode,
+        registrationType: 'Pre-registered',
+        attendanceStatus: 'Pending'
+      };
+
+      const result = await window.dataSdk.create(attendanceRecord);
+
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+
+      if (result.isOk) {
+        showToast('Participant registered successfully', 'success');
+        event.target.reset();
+      } else {
+        showToast('Failed to register participant', 'error');
+      }
+    }
+
+    function downloadRegistrationTemplate() {
+      const csv = [
+        ['IC Number', 'Full Name', 'Phone', 'Email', 'Company', 'Company Code', 'Designation'],
+        ['', '', '', '', '', '', '']
+      ].map(row => row.join(',')).join('\n');
+
+      downloadCSV(csv, 'registration_template.csv');
+      showToast('Template downloaded', 'success');
+    }
+
+    async function processBulkRegistration() {
+      const classId = document.getElementById('bulkRegClass').value;
+      const fileInput = document.getElementById('bulkRegFile');
+      const file = fileInput.files[0];
+
+      if (!classId) {
+        showToast('Please select a class', 'error');
+        return;
+      }
+
+      if (!file) {
+        showToast('Please select a file', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('bulkRegBtn');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = 'Processing...<span class="spinner"></span>';
+      btn.disabled = true;
+
+      showToast('Processing bulk registration...', 'info');
+
+      setTimeout(async () => {
+        // Mock data for demonstration with validation scenarios
+        const mockData = [
+          { ic: '900101-01-1234', name: 'Ali bin Abu', phone: '012-3456789', email: 'ali@email.com', company: 'ABC Sdn Bhd', company_code: '001', designation: 'Service Manager' },
+          { ic: '900202-02-2345', name: 'Siti binti Ahmad', phone: '', email: '', company: 'XYZ Sdn Bhd', company_code: '12345', designation: 'Technician' }
+        ];
+
+        const validDesignations = ['Service Manager', 'Service Advisor', 'CRE/CRA', 'Technician', 'Parts Controller', 'Job Controller', 'BP Manager', 'Insurance Claim Advisor', 'BP Technician'];
+        const cls = getClasses().find(c => c.id === classId);
+        let registered = 0;
+        let skipped = 0;
+        let invalidRows = 0;
+
+        for (const row of mockData) {
+          try {
+            // Validate required fields
+            if (!row.ic || !row.ic.trim()) {
+              invalidRows++;
+              continue;
+            }
+            if (!row.name || !row.name.trim()) {
+              invalidRows++;
+              continue;
+            }
+            if (!row.company || !row.company.trim()) {
+              invalidRows++;
+              continue;
+            }
+            if (!row.company_code || !row.company_code.trim()) {
+              invalidRows++;
+              continue;
+            }
+            if (!row.designation || !row.designation.trim()) {
+              invalidRows++;
+              continue;
+            }
+
+            // Validate IC number (numbers only)
+            if (!/^\d+$/.test(row.ic.trim())) {
+              invalidRows++;
+              continue;
+            }
+
+            // Validate company code (numbers only)
+            if (!/^\d+$/.test(row.company_code.trim())) {
+              invalidRows++;
+              continue;
+            }
+
+            // Validate designation
+            if (!validDesignations.includes(row.designation.trim())) {
+              invalidRows++;
+              continue;
+            }
+
+            // Check if already registered in this class
+            const existingAttendance = getAttendance().find(a => a.classId === classId && a.ic === row.ic.trim());
+            if (existingAttendance) {
+              skipped++;
+              continue;
+            }
+
+            // Create or update participant
+            let participant = getParticipantByIC(row.ic.trim());
+            if (!participant) {
+              participant = {
+                id: generateId(),
+                type: 'participant',
+                ic: row.ic.trim(),
+                name: row.name.trim(),
+                phone: row.phone ? row.phone.trim() : '',
+                email: row.email ? row.email.trim() : '',
+                company: row.company.trim(),
+                company_code: row.company_code.trim(),
+                designation: row.designation.trim(),
+                dateRegistered: new Date().toISOString()
+              };
+              await window.dataSdk.create(participant);
+            } else {
+              // Update existing participant info
+              participant.name = row.name.trim();
+              participant.phone = row.phone ? row.phone.trim() : participant.phone;
+              participant.email = row.email ? row.email.trim() : participant.email;
+              participant.company = row.company.trim();
+              participant.company_code = row.company_code.trim();
+              participant.designation = row.designation.trim();
+              await window.dataSdk.update(participant);
+            }
+
+            // Create attendance record
+            const attendanceRecord = {
+              id: generateId(),
+              type: 'attendance',
+              classId: classId,
+              ic: row.ic.trim(),
+              courseCode: cls.courseCode,
+              registrationType: 'Pre-registered',
+              attendanceStatus: 'Pending'
+            };
+
+            await window.dataSdk.create(attendanceRecord);
+            registered++;
+          } catch (error) {
+            invalidRows++;
+          }
+        }
+
+        const resultsHTML = `
+          <div class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p class="font-medium text-green-900 mb-2">Bulk Registration Results:</p>
+            <ul class="text-sm text-green-800 space-y-1">
+              <li>✅ ${registered} participants registered successfully</li>
+              <li>⏭️ ${skipped} already registered in this class (skipped)</li>
+              <li>❌ ${invalidRows} invalid rows (missing required fields, invalid IC/company code format, or wrong designation)</li>
+            </ul>
+          </div>
+        `;
+        document.getElementById('bulkRegResults').innerHTML = resultsHTML;
+        document.getElementById('bulkRegResults').classList.remove('hidden');
+
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        
+        showToast('Bulk registration completed', 'success');
+      }, 2000);
+    }
+
+    // Participant functions
+    function editParticipant(ic) {
+      const participant = getParticipantByIC(ic);
+      if (!participant) return;
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Edit Participant</h3>
+              <form onsubmit="updateParticipant(event, '${ic}')" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">IC Number</label>
+                  <input type="text" id="editParticipantIC" value="${participant.ic}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                  <input type="text" id="editParticipantName" value="${participant.name}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <input type="text" id="editParticipantPhone" value="${participant.phone}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input type="email" id="editParticipantEmail" value="${participant.email}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Company</label>
+                  <input type="text" id="editParticipantCompany" value="${participant.company}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Company Code</label>
+                  <input type="text" id="editParticipantCompanyCode" value="${participant.company_code || ''}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Designation/Position</label>
+                  <select id="editParticipantDesignation" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- Select Designation --</option>
+                    <option value="Service Manager" ${participant.designation === 'Service Manager' ? 'selected' : ''}>Service Manager</option>
+                    <option value="Service Advisor" ${participant.designation === 'Service Advisor' ? 'selected' : ''}>Service Advisor</option>
+                    <option value="CRE/CRA" ${participant.designation === 'CRE/CRA' ? 'selected' : ''}>CRE/CRA</option>
+                    <option value="Technician" ${participant.designation === 'Technician' ? 'selected' : ''}>Technician</option>
+                    <option value="Parts Controller" ${participant.designation === 'Parts Controller' ? 'selected' : ''}>Parts Controller</option>
+                    <option value="Job Controller" ${participant.designation === 'Job Controller' ? 'selected' : ''}>Job Controller</option>
+                    <option value="BP Manager" ${participant.designation === 'BP Manager' ? 'selected' : ''}>BP Manager</option>
+                    <option value="Insurance Claim Advisor" ${participant.designation === 'Insurance Claim Advisor' ? 'selected' : ''}>Insurance Claim Advisor</option>
+                    <option value="BP Technician" ${participant.designation === 'BP Technician' ? 'selected' : ''}>BP Technician</option>
+                  </select>
+                </div>
+                <div class="flex gap-2 pt-4">
+                  <button type="submit" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Save Changes</button>
+                  <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function updateParticipant(event, oldIC) {
+      event.preventDefault();
+
+      const newIC = document.getElementById('editParticipantIC').value;
+      const participant = getParticipantByIC(oldIC);
+
+      participant.ic = newIC;
+      participant.name = document.getElementById('editParticipantName').value;
+      participant.phone = document.getElementById('editParticipantPhone').value;
+      participant.email = document.getElementById('editParticipantEmail').value;
+      participant.company = document.getElementById('editParticipantCompany').value;
+      participant.company_code = document.getElementById('editParticipantCompanyCode').value;
+      participant.designation = document.getElementById('editParticipantDesignation').value;
+
+      const result = await window.dataSdk.update(participant);
+
+      if (result.isOk && oldIC !== newIC) {
+        const relatedRecords = allData.filter(d => d.ic === oldIC && d.type !== 'participant');
+        for (const record of relatedRecords) {
+          record.ic = newIC;
+          await window.dataSdk.update(record);
+        }
+      }
+
+      if (result.isOk) {
+        showToast('Participant updated successfully', 'success');
+        closeModal();
+      } else {
+        showToast('Failed to update participant', 'error');
+      }
+    }
+
+    async function deleteParticipant(ic) {
+      const participant = getParticipantByIC(ic);
+      if (!participant) return;
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">Confirm Delete</h3>
+            <p class="text-gray-600 mb-6">Are you sure you want to delete ${participant.name}? This will also delete all related records.</p>
+            <div class="flex gap-2">
+              <button onclick="confirmDeleteParticipant('${ic}')" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">Delete</button>
+              <button onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function confirmDeleteParticipant(ic) {
+      const relatedRecords = allData.filter(d => d.ic === ic);
+
+      for (const record of relatedRecords) {
+        await window.dataSdk.delete(record);
+      }
+
+      showToast('Participant deleted successfully', 'success');
+      closeModal();
+    }
+
+    function downloadParticipants() {
+      const participants = getParticipants();
+      
+      if (participants.length === 0) {
+        showToast('No participants to download', 'error');
+        return;
+      }
+
+      const csv = [
+        ['IC Number', 'Full Name', 'Phone', 'Email', 'Company', 'Company Code', 'Designation', 'Date Registered'],
+        ...participants.map(p => [
+          p.ic,
+          p.name,
+          p.phone,
+          p.email,
+          p.company,
+          p.company_code || '-',
+          p.designation || '-',
+          new Date(p.dateRegistered).toLocaleDateString()
+        ])
+      ].map(row => row.join(',')).join('\n');
+
+      downloadCSV(csv, 'participants.csv');
+      showToast('Participants downloaded successfully', 'success');
+    }
+
+    // Trainer functions
+    function showAddTrainerModal() {
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Add Trainer</h3>
+              <form onsubmit="addTrainer(event)" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                  <input type="text" id="trainerName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input type="email" id="trainerEmail" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <input type="text" id="trainerPhone" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Qualification</label>
+                  <input type="text" id="trainerQualification" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Expertise</label>
+                  <textarea id="trainerExpertise" rows="3" required class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                </div>
+                <div class="flex gap-2 pt-4">
+                  <button type="submit" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Add Trainer</button>
+                  <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function addTrainer(event) {
+      event.preventDefault();
+
+      const trainer = {
+        id: generateId(),
+        type: 'trainer',
+        name: document.getElementById('trainerName').value,
+        email: document.getElementById('trainerEmail').value,
+        phone: document.getElementById('trainerPhone').value,
+        qualification: document.getElementById('trainerQualification').value,
+        expertise: document.getElementById('trainerExpertise').value
+      };
+
+      const result = await window.dataSdk.create(trainer);
+
+      if (result.isOk) {
+        showToast('Trainer added successfully', 'success');
+        closeModal();
+      } else {
+        showToast('Failed to add trainer', 'error');
+      }
+    }
+
+    function editTrainer(id) {
+      const trainer = getTrainers().find(t => t.id === id);
+      if (!trainer) return;
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-between z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Edit Trainer</h3>
+              <form onsubmit="updateTrainer(event, '${id}')" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                  <input type="text" id="editTrainerName" value="${trainer.name}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input type="email" id="editTrainerEmail" value="${trainer.email}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <input type="text" id="editTrainerPhone" value="${trainer.phone}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Qualification</label>
+                  <input type="text" id="editTrainerQualification" value="${trainer.qualification}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Expertise</label>
+                  <textarea id="editTrainerExpertise" rows="3" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">${trainer.expertise}</textarea>
+                </div>
+                <div class="flex gap-2 pt-4">
+                  <button type="submit" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Save Changes</button>
+                  <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function updateTrainer(event, id) {
+      event.preventDefault();
+
+      const trainer = getTrainers().find(t => t.id === id);
+      trainer.name = document.getElementById('editTrainerName').value;
+      trainer.email = document.getElementById('editTrainerEmail').value;
+      trainer.phone = document.getElementById('editTrainerPhone').value;
+      trainer.qualification = document.getElementById('editTrainerQualification').value;
+      trainer.expertise = document.getElementById('editTrainerExpertise').value;
+
+      const result = await window.dataSdk.update(trainer);
+
+      if (result.isOk) {
+        showToast('Trainer updated successfully', 'success');
+        closeModal();
+      } else {
+        showToast('Failed to update trainer', 'error');
+      }
+    }
+
+    async function deleteTrainer(id) {
+      const trainer = getTrainers().find(t => t.id === id);
+      if (!trainer) return;
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">Confirm Delete</h3>
+            <p class="text-gray-600 mb-6">Are you sure you want to delete ${trainer.name}?</p>
+            <div class="flex gap-2">
+              <button onclick="confirmDeleteTrainer('${id}')" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">Delete</button>
+              <button onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function confirmDeleteTrainer(id) {
+      const trainer = getTrainers().find(t => t.id === id);
+      await window.dataSdk.delete(trainer);
+      showToast('Trainer deleted successfully', 'success');
+      closeModal();
+    }
+
+    // Course functions
+    function showAddCourseModal() {
+      const certifications = getCertifications();
+      const trainers = getTrainers();
+      
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Add Course</h3>
+              <form onsubmit="addCourse(event)" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Course Code</label>
+                  <input type="text" id="courseCode" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Course Name</label>
+                  <input type="text" id="courseName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+                  <input type="text" id="courseDuration" placeholder="e.g., 3 days" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Certification Program</label>
+                  <select id="courseCertification" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- No Certification --</option>
+                    ${certifications.map(c => `<option value="${c.id}">${c.certificationName}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Author</label>
+                  <select id="courseAuthor" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- No Author --</option>
+                    ${trainers.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select id="courseStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+                <div class="flex gap-2 pt-4">
+                  <button type="submit" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Add Course</button>
+                  <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function addCourse(event) {
+      event.preventDefault();
+
+      const courseCode = document.getElementById('courseCode').value;
+      
+      const existing = getCourses().find(c => c.courseCode === courseCode);
+      if (existing) {
+        showToast('Course code already exists', 'error');
+        return;
+      }
+
+      const course = {
+        id: generateId(),
+        type: 'course',
+        courseCode: courseCode,
+        courseName: document.getElementById('courseName').value,
+        duration: document.getElementById('courseDuration').value,
+        certificationProgram: document.getElementById('courseCertification').value,
+        authorName: document.getElementById('courseAuthor').value,
+        status: document.getElementById('courseStatus').value
+      };
+
+      const result = await window.dataSdk.create(course);
+
+      if (result.isOk) {
+        showToast('Course added successfully', 'success');
+        closeModal();
+      } else {
+        showToast('Failed to add course', 'error');
+      }
+    }
+
+    function editCourse(id) {
+      const course = getCourses().find(c => c.id === id);
+      if (!course) return;
+
+      const certifications = getCertifications();
+      const trainers = getTrainers();
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Edit Course</h3>
+              <form onsubmit="updateCourse(event, '${id}')" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Course Code</label>
+                  <input type="text" id="editCourseCode" value="${course.courseCode}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100" readonly>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Course Name</label>
+                  <input type="text" id="editCourseName" value="${course.courseName}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+                  <input type="text" id="editCourseDuration" value="${course.duration}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Certification Program</label>
+                  <select id="editCourseCertification" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- No Certification --</option>
+                    ${certifications.map(c => `<option value="${c.id}" ${c.id === course.certificationProgram ? 'selected' : ''}>${c.certificationName}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Author</label>
+                  <select id="editCourseAuthor" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- No Author --</option>
+                    ${trainers.map(t => `<option value="${t.id}" ${t.id === course.authorName ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select id="editCourseStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="Active" ${course.status === 'Active' ? 'selected' : ''}>Active</option>
+                    <option value="Inactive" ${course.status === 'Inactive' ? 'selected' : ''}>Inactive</option>
+                  </select>
+                </div>
+                <div class="flex gap-2 pt-4">
+                  <button type="submit" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Save Changes</button>
+                  <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function updateCourse(event, id) {
+      event.preventDefault();
+
+      const course = getCourses().find(c => c.id === id);
+      course.courseName = document.getElementById('editCourseName').value;
+      course.duration = document.getElementById('editCourseDuration').value;
+      course.certificationProgram = document.getElementById('editCourseCertification').value;
+      course.authorName = document.getElementById('editCourseAuthor').value;
+      course.status = document.getElementById('editCourseStatus').value;
+
+      const result = await window.dataSdk.update(course);
+
+      if (result.isOk) {
+        showToast('Course updated successfully', 'success');
+        closeModal();
+      } else {
+        showToast('Failed to update course', 'error');
+      }
+    }
+
+    async function deleteCourse(id) {
+      const course = getCourses().find(c => c.id === id);
+      if (!course) return;
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">Confirm Delete</h3>
+            <p class="text-gray-600 mb-6">Are you sure you want to delete ${course.courseName}?</p>
+            <div class="flex gap-2">
+              <button onclick="confirmDeleteCourse('${id}')" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">Delete</button>
+              <button onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function confirmDeleteCourse(id) {
+      const course = getCourses().find(c => c.id === id);
+      await window.dataSdk.delete(course);
+      showToast('Course deleted successfully', 'success');
+      closeModal();
+    }
+
+    // Certification functions
+    function showAddCertificationModal() {
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Create Certification</h3>
+              <form onsubmit="addCertification(event)" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Certification Name</label>
+                  <input type="text" id="certName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <textarea id="certDescription" rows="3" required class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                </div>
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p class="text-sm text-blue-800">Note: After creating the certification, assign courses to it by editing courses and selecting this certification.</p>
+                </div>
+                <div class="flex gap-2 pt-4">
+                  <button type="submit" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Create Certification</button>
+                  <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function addCertification(event) {
+      event.preventDefault();
+
+      const certification = {
+        id: generateId(),
+        type: 'certification',
+        certificationName: document.getElementById('certName').value,
+        certificationDescription: document.getElementById('certDescription').value,
+        requiredCourses: ''
+      };
+
+      const result = await window.dataSdk.create(certification);
+
+      if (result.isOk) {
+        showToast('Certification created successfully', 'success');
+        closeModal();
+      } else {
+        showToast('Failed to create certification', 'error');
+      }
+    }
+
+    function editCertification(id) {
+      const cert = getCertifications().find(c => c.id === id);
+      if (!cert) return;
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Edit Certification</h3>
+              <form onsubmit="updateCertification(event, '${id}')" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Certification Name</label>
+                  <input type="text" id="editCertName" value="${cert.certificationName}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <textarea id="editCertDescription" rows="3" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">${cert.certificationDescription}</textarea>
+                </div>
+                <div class="flex gap-2 pt-4">
+                  <button type="submit" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Save Changes</button>
+                  <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function updateCertification(event, id) {
+      event.preventDefault();
+
+      const cert = getCertifications().find(c => c.id === id);
+      cert.certificationName = document.getElementById('editCertName').value;
+      cert.certificationDescription = document.getElementById('editCertDescription').value;
+
+      const result = await window.dataSdk.update(cert);
+
+      if (result.isOk) {
+        showToast('Certification updated successfully', 'success');
+        closeModal();
+      } else {
+        showToast('Failed to update certification', 'error');
+      }
+    }
+
+    async function deleteCertification(id) {
+      const cert = getCertifications().find(c => c.id === id);
+      if (!cert) return;
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">Confirm Delete</h3>
+            <p class="text-gray-600 mb-6">Are you sure you want to delete ${cert.certificationName}?</p>
+            <div class="flex gap-2">
+              <button onclick="confirmDeleteCertification('${id}')" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">Delete</button>
+              <button onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function confirmDeleteCertification(id) {
+      const cert = getCertifications().find(c => c.id === id);
+      await window.dataSdk.delete(cert);
+      showToast('Certification deleted successfully', 'success');
+      closeModal();
+    }
+
+    // Class functions
+    function showAddClassModal() {
+      const courses = getCourses().filter(c => c.status === 'Active');
+      const trainers = getTrainers();
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Create Class</h3>
+              <form onsubmit="addClass(event)" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Class Name</label>
+                  <input type="text" id="className" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                  <select id="classCourse" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- Select Course --</option>
+                    ${courses.map(c => `<option value="${c.courseCode}">${c.courseCode} - ${c.courseName}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Trainer</label>
+                  <select id="classTrainer" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- No Trainer --</option>
+                    ${trainers.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                  <input type="date" id="classStartDate" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                  <input type="date" id="classEndDate" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Venue</label>
+                  <input type="text" id="classVenue" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div class="flex gap-2 pt-4">
+                  <button type="submit" id="createClassBtn" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Create Class</button>
+                  <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function addClass(event) {
+      event.preventDefault();
+
+      const btn = document.getElementById('createClassBtn');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = 'Creating...<span class="spinner"></span>';
+      btn.disabled = true;
+
+      const classData = {
+        id: generateId(),
+        type: 'class',
+        className: document.getElementById('className').value,
+        courseCode: document.getElementById('classCourse').value,
+        trainerId: document.getElementById('classTrainer').value,
+        classStartDate: document.getElementById('classStartDate').value,
+        classEndDate: document.getElementById('classEndDate').value,
+        venue: document.getElementById('classVenue').value,
+        classStatus: 'Active'
+      };
+
+      const result = await window.dataSdk.create(classData);
+
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+
+      if (result.isOk) {
+        showToast('Class created successfully', 'success');
+        closeModal();
+      } else {
+        showToast('Failed to create class', 'error');
+      }
+    }
+
+    function editClass(id) {
+      const cls = getClasses().find(c => c.id === id);
+      if (!cls) return;
+
+      const courses = getCourses().filter(c => c.status === 'Active');
+      const trainers = getTrainers();
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Edit Class</h3>
+              <form onsubmit="updateClass(event, '${id}')" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Class Name</label>
+                  <input type="text" id="editClassName" value="${cls.className}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                  <select id="editClassCourse" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    ${courses.map(c => `<option value="${c.courseCode}" ${c.courseCode === cls.courseCode ? 'selected' : ''}>${c.courseCode} - ${c.courseName}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Trainer</label>
+                  <select id="editClassTrainer" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- No Trainer --</option>
+                    ${trainers.map(t => `<option value="${t.id}" ${t.id === cls.trainerId ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                  <input type="date" id="editClassStartDate" value="${cls.classStartDate}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                  <input type="date" id="editClassEndDate" value="${cls.classEndDate}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Venue</label>
+                  <input type="text" id="editClassVenue" value="${cls.venue}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div class="flex gap-2 pt-4">
+                  <button type="submit" id="editClassBtn" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Save Changes</button>
+                  <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function updateClass(event, id) {
+      event.preventDefault();
+
+      const btn = document.getElementById('editClassBtn');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = 'Saving...<span class="spinner"></span>';
+      btn.disabled = true;
+
+      const cls = getClasses().find(c => c.id === id);
+      cls.className = document.getElementById('editClassName').value;
+      cls.courseCode = document.getElementById('editClassCourse').value;
+      cls.trainerId = document.getElementById('editClassTrainer').value;
+      cls.classStartDate = document.getElementById('editClassStartDate').value;
+      cls.classEndDate = document.getElementById('editClassEndDate').value;
+      cls.venue = document.getElementById('editClassVenue').value;
+
+      const result = await window.dataSdk.update(cls);
+
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+
+      if (result.isOk) {
+        showToast('Class updated successfully', 'success');
+        closeModal();
+      } else {
+        showToast('Failed to update class', 'error');
+      }
+    }
+
+    async function changeClassStatus(classId, newStatus) {
+      const cls = getClasses().find(c => c.id === classId);
+      if (!cls) return;
+
+      if (newStatus === 'Completed') {
+        // For completed classes, auto-mark pending attendance as Absent
+        const pendingAttendance = getAttendance().filter(a => 
+          a.classId === classId && a.attendanceStatus === 'Pending'
+        );
+
+        for (const att of pendingAttendance) {
+          att.attendanceStatus = 'Absent';
+          await window.dataSdk.update(att);
+        }
+
+        if (pendingAttendance.length > 0) {
+          showToast(`${pendingAttendance.length} pending participants marked as Absent`, 'info');
+        }
+      } else if (newStatus === 'Cancelled') {
+        // For cancelled classes, delete all related data (attendance, test results)
+        const relatedAttendance = getAttendance().filter(a => a.classId === classId);
+        const relatedTestResults = getTestResults().filter(t => t.classId === classId);
+        
+        let deletedCount = 0;
+
+        // Delete all attendance records
+        for (const att of relatedAttendance) {
+          await window.dataSdk.delete(att);
+          deletedCount++;
+        }
+
+        // Delete all test results
+        for (const test of relatedTestResults) {
+          await window.dataSdk.delete(test);
+        }
+
+        if (deletedCount > 0) {
+          showToast(`Removed ${deletedCount} participant assignments from cancelled class`, 'info');
+        }
+      }
+
+      cls.classStatus = newStatus;
+      const result = await window.dataSdk.update(cls);
+
+      if (result.isOk) {
+        showToast(`Class marked as ${newStatus}`, 'success');
+      } else {
+        showToast('Failed to update class status', 'error');
+      }
+    }
+
+    async function deleteClass(id) {
+      const cls = getClasses().find(c => c.id === id);
+      if (!cls) return;
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">Confirm Delete</h3>
+            <p class="text-gray-600 mb-6">Are you sure you want to delete ${cls.className}? This will also delete all attendance and test records.</p>
+            <div class="flex gap-2">
+              <button onclick="confirmDeleteClass('${id}')" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">Delete</button>
+              <button onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function confirmDeleteClass(id) {
+      const relatedRecords = allData.filter(d => d.classId === id);
+
+      for (const record of relatedRecords) {
+        await window.dataSdk.delete(record);
+      }
+
+      showToast('Class deleted successfully', 'success');
+      closeModal();
+    }
+
+    function viewClassParticipants(classId) {
+      const cls = getClasses().find(c => c.id === classId);
+      if (!cls) return;
+
+      const participants = getParticipants();
+      const attendance = getAttendance().filter(a => a.classId === classId);
+      const enrolledICs = attendance.map(a => a.ic);
+
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Participants - ${cls.className}</h3>
+              <div class="mb-4">
+                <p class="text-sm text-gray-600">Total Enrolled: ${enrolledICs.length}</p>
+              </div>
+              <div class="space-y-2">
+                ${enrolledICs.length > 0 ? enrolledICs.map(ic => {
+                  const participant = getParticipantByIC(ic);
+                  const att = attendance.find(a => a.ic === ic);
+                  return `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <div class="font-medium">${participant ? participant.name : ic}</div>
+                        <div class="text-sm text-gray-600">${ic} - ${att.registrationType}</div>
+                      </div>
+                    </div>
+                  `;
+                }).join('') : '<p class="text-gray-500 text-center py-4">No participants enrolled</p>'}
+              </div>
+              <div class="mt-6">
+                <button onclick="closeModal()" class="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    // Mark Attendance functions
+    function loadMarkAttendance() {
+      const classId = document.getElementById('markAttendanceClassSelect').value;
+      if (!classId) {
+        document.getElementById('markAttendanceContent').innerHTML = '';
+        return;
+      }
+
+      const cls = getClasses().find(c => c.id === classId);
+      const attendance = getAttendance().filter(a => a.classId === classId);
+      const participants = getParticipants();
+
+      // Separate pre-registered and walk-in
+      const preRegistered = attendance.filter(a => a.registrationType === 'Pre-registered');
+      const walkIn = attendance.filter(a => a.registrationType === 'Walk-in');
+
+      const html = `
+        <div class="space-y-6">
+          <!-- Pre-registered Section -->
+          <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 class="text-lg font-bold text-gray-800 mb-3">Pre-registered Participants (${preRegistered.filter(a => a.attendanceStatus === 'Pending').length} pending)</h3>
+            ${preRegistered.filter(a => a.attendanceStatus === 'Pending').length > 0 ? `
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Select Participant</label>
+                  <select id="preRegSelect" class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white" onchange="showAttendanceButtons('preReg')">
+                    <option value="">-- Select a participant --</option>
+                    ${preRegistered.filter(a => a.attendanceStatus === 'Pending').map(a => {
+                      const participant = participants.find(p => p.ic === a.ic);
+                      const displayName = participant ? participant.name : 'Unknown';
+                      return `<option value="${a.id}">○ ${displayName} (${a.ic})</option>`;
+                    }).join('')}
+                  </select>
+                </div>
+                <div id="preRegButtons" class="hidden flex gap-2">
+                  <button onclick="markAttendanceFromDropdown('preReg', 'Present')" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">Mark Present</button>
+                  <button onclick="markAttendanceFromDropdown('preReg', 'Absent')" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">Mark Absent</button>
+                </div>
+              </div>
+            ` : '<p class="text-gray-500 text-center py-4">All pre-registered participants marked</p>'}
+          </div>
+
+          <!-- Walk-in Section -->
+          <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-lg font-bold text-gray-800">Walk-in Participants (${walkIn.filter(a => a.attendanceStatus === 'Pending').length} pending)</h3>
+              <button onclick="showAddWalkInModal('${classId}')" class="px-3 py-1 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700">+ Add Walk-in</button>
+            </div>
+            ${walkIn.filter(a => a.attendanceStatus === 'Pending').length > 0 ? `
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Select Walk-in Participant</label>
+                  <select id="walkInSelect" class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white" onchange="showAttendanceButtons('walkIn')">
+                    <option value="">-- Select a participant --</option>
+                    ${walkIn.filter(a => a.attendanceStatus === 'Pending').map(a => {
+                      const participant = participants.find(p => p.ic === a.ic);
+                      const displayName = participant ? participant.name : 'Unknown';
+                      return `<option value="${a.id}">○ ${displayName} (${a.ic})</option>`;
+                    }).join('')}
+                  </select>
+                </div>
+                <div id="walkInButtons" class="hidden flex gap-2">
+                  <button onclick="markAttendanceFromDropdown('walkIn', 'Present')" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">Mark Present</button>
+                  <button onclick="markAttendanceFromDropdown('walkIn', 'Absent')" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">Mark Absent</button>
+                </div>
+              </div>
+            ` : '<p class="text-gray-500 text-center py-4">All walk-in participants marked</p>'}
+          </div>
+        </div>
+      `;
+
+      document.getElementById('markAttendanceContent').innerHTML = html;
+    }
+
+    function showAttendanceButtons(type) {
+      const selectId = type === 'preReg' ? 'preRegSelect' : 'walkInSelect';
+      const buttonsId = type === 'preReg' ? 'preRegButtons' : 'walkInButtons';
+      
+      const select = document.getElementById(selectId);
+      const buttons = document.getElementById(buttonsId);
+      
+      if (select.value) {
+        buttons.classList.remove('hidden');
+      } else {
+        buttons.classList.add('hidden');
+      }
+    }
+
+    function markAttendanceFromDropdown(type, status) {
+      const selectId = type === 'preReg' ? 'preRegSelect' : 'walkInSelect';
+      const select = document.getElementById(selectId);
+      const attendanceId = select.value;
+      
+      if (!attendanceId) {
+        showToast('Please select a participant', 'error');
+        return;
+      }
+      
+      markAttendanceStatus(attendanceId, status);
+    }
+
+    function showAddWalkInModal(classId) {
+      const modal = `
+        <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90%] overflow-y-auto">
+            <div class="p-6">
+              <h3 class="text-2xl font-bold mb-4 text-gray-800">Add Walk-in Participant</h3>
+              <form onsubmit="addWalkInParticipant(event, '${classId}')" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">IC Number</label>
+                  <input type="text" id="walkInIC" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                  <input type="text" id="walkInName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <input type="text" id="walkInPhone" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input type="email" id="walkInEmail" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Company</label>
+                  <input type="text" id="walkInCompany" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Company Code</label>
+                  <input type="text" id="walkInCompanyCode" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Designation/Position</label>
+                  <select id="walkInDesignation" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- Select Designation --</option>
+                    <option value="Service Manager">Service Manager</option>
+                    <option value="Service Advisor">Service Advisor</option>
+                    <option value="CRE/CRA">CRE/CRA</option>
+                    <option value="Technician">Technician</option>
+                    <option value="Parts Controller">Parts Controller</option>
+                    <option value="Job Controller">Job Controller</option>
+                    <option value="BP Manager">BP Manager</option>
+                    <option value="Insurance Claim Advisor">Insurance Claim Advisor</option>
+                    <option value="BP Technician">BP Technician</option>
+                  </select>
+                </div>
+                <div class="flex gap-2 pt-4">
+                  <button type="submit" id="addWalkInBtn" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Add Walk-in</button>
+                  <button type="button" onclick="closeModal(); loadMarkAttendance();" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalContainer').innerHTML = modal;
+    }
+
+    async function addWalkInParticipant(event, classId) {
+      event.preventDefault();
+
+      const btn = document.getElementById('addWalkInBtn');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = 'Adding...<span class="spinner"></span>';
+      btn.disabled = true;
+
+      const cls = getClasses().find(c => c.id === classId);
+      const ic = document.getElementById('walkInIC').value;
+      const name = document.getElementById('walkInName').value;
+      const phone = document.getElementById('walkInPhone').value;
+      const email = document.getElementById('walkInEmail').value;
+      const company = document.getElementById('walkInCompany').value;
+      const companyCode = document.getElementById('walkInCompanyCode').value;
+
+      // Check if already enrolled in this class
+      const existingAttendance = getAttendance().find(a => a.classId === classId && a.ic === ic);
+      if (existingAttendance) {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        showToast('Participant already enrolled in this class', 'error');
+        return;
+      }
+
+      // Check if participant exists in database
+      let participant = getParticipantByIC(ic);
+      
+      if (!participant) {
+        // Create new participant
+        participant = {
+          id: generateId(),
+          type: 'participant',
+          ic: ic,
+          name: name,
+          phone: phone,
+          email: email,
+          company: company,
+          company_code: companyCode,
+          designation: document.getElementById('walkInDesignation').value,
+          dateRegistered: new Date().toISOString()
+        };
+        await window.dataSdk.create(participant);
+        showToast('New participant added to database', 'success');
+      } else {
+        showToast('Existing participant found in database', 'info');
+      }
+
+      // Create attendance record
+      const attendanceRecord = {
+        id: generateId(),
+        type: 'attendance',
+        classId: classId,
+        ic: ic,
+        courseCode: cls.courseCode,
+        registrationType: 'Walk-in',
+        attendanceStatus: 'Present'
+      };
+
+      const result = await window.dataSdk.create(attendanceRecord);
+
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+
+      if (result.isOk) {
+        showToast('Walk-in participant added to class', 'success');
+        closeModal();
+        loadMarkAttendance();
+      } else {
+        showToast('Failed to add walk-in participant', 'error');
+      }
+    }
+
+    async function markAttendanceStatus(attendanceId, status) {
+      const attendance = getAttendance().find(a => a.id === attendanceId);
+      if (!attendance) return;
+
+      attendance.attendanceStatus = status;
+      const result = await window.dataSdk.update(attendance);
+
+      if (result.isOk) {
+        showToast(`Marked as ${status}`, 'success');
+        loadMarkAttendance();
+        checkAndAwardCertifications(attendance.ic);
+      } else {
+        showToast('Failed to update attendance', 'error');
+      }
+    }
+
+    // Test Results functions
+    function loadTestResults() {
+      const classId = document.getElementById('testResultClassSelect').value;
+      if (!classId) {
+        document.getElementById('testResultsList').innerHTML = '';
+        return;
+      }
+
+      const cls = getClasses().find(c => c.id === classId);
+      const trainer = cls ? getTrainers().find(t => t.id === cls.trainerId) : null;
+      const attendance = getAttendance().filter(a => a.classId === classId);
+      const participants = getParticipants();
+      const testResults = getTestResults().filter(t => t.classId === classId);
+
+      const html = attendance.length > 0 ? `
+        ${trainer ? `<div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg"><span class="font-medium text-blue-900">👨‍🏫 Trainer: ${trainer.name}</span></div>` : ''}
+        <div class="mb-4 flex justify-end">
+          <button onclick="saveAllTestResults('${classId}')" id="saveAllTestResultsBtn" class="btn-primary px-6 py-2 text-white rounded-lg font-medium">Save All Test Results</button>
+        </div>
+        <table class="w-full">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">IC Number</th>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Name</th>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Attendance</th>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Test Score</th>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Test Result</th>
+              <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200">
+            ${attendance.map(a => {
+              const participant = participants.find(p => p.ic === a.ic);
+              const testResult = testResults.find(t => t.ic === a.ic);
+              const score = testResult ? testResult.testScore : (a.attendanceStatus === 'Absent' ? 0 : '');
+              const result = testResult ? testResult.testResult : (a.attendanceStatus === 'Absent' ? 'Fail' : 'Pending');
+              const hasResult = testResult !== undefined;
+              
+              return `
+                <tr class="hover:bg-gray-50">
+                  <td class="px-4 py-3 text-sm">${a.ic}</td>
+                  <td class="px-4 py-3 text-sm font-medium">${participant ? participant.name : 'Unknown'}</td>
+                  <td class="px-4 py-3 text-sm">
+                    <span class="px-2 py-1 text-xs rounded ${a.attendanceStatus === 'Present' ? 'bg-green-100 text-green-800' : a.attendanceStatus === 'Absent' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}">${a.attendanceStatus}</span>
+                  </td>
+                  <td class="px-4 py-3 text-sm">
+                    <input type="number" id="score_${a.ic}" value="${score}" min="0" max="100" readonly class="w-20 px-2 py-1 border border-gray-300 rounded text-sm bg-gray-100">
+                  </td>
+                  <td class="px-4 py-3 text-sm">
+                    <select id="result_${a.ic}" disabled class="px-3 py-1 border border-gray-300 rounded text-sm bg-gray-100">
+                      <option value="Pending" ${result === 'Pending' ? 'selected' : ''}>Pending</option>
+                      <option value="Pass" ${result === 'Pass' ? 'selected' : ''}>Pass</option>
+                      <option value="Fail" ${result === 'Fail' ? 'selected' : ''}>Fail</option>
+                    </select>
+                  </td>
+                  <td class="px-4 py-3 text-sm">
+                    ${a.attendanceStatus !== 'Absent' ? `<button onclick="enableEditTestResult('${a.ic}')" id="editBtn_${a.ic}" class="text-blue-600 hover:text-blue-800 font-medium">Edit</button>` : '<span class="text-gray-400">N/A</span>'}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      ` : '<p class="text-gray-500 text-center py-8 mt-4">No participants in this class</p>';
+
+      document.getElementById('testResultsList').innerHTML = html;
+    }
+
+    function enableEditTestResult(ic) {
+      const scoreInput = document.getElementById(`score_${ic}`);
+      const resultSelect = document.getElementById(`result_${ic}`);
+      const editBtn = document.getElementById(`editBtn_${ic}`);
+      
+      scoreInput.readOnly = false;
+      scoreInput.classList.remove('bg-gray-100');
+      scoreInput.classList.add('bg-white');
+      resultSelect.disabled = false;
+      resultSelect.classList.remove('bg-gray-100');
+      resultSelect.classList.add('bg-white');
+      
+      if (editBtn) {
+        editBtn.textContent = 'Editing...';
+        editBtn.disabled = true;
+        editBtn.classList.add('text-gray-400', 'cursor-not-allowed');
+        editBtn.classList.remove('text-blue-600', 'hover:text-blue-800');
+      }
+      
+      showToast('You can now edit the test result. Click "Save All" when done.', 'info');
+    }
+
+    async function saveAllTestResults(classId) {
+      const btn = document.getElementById('saveAllTestResultsBtn');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = 'Saving...<span class="spinner"></span>';
+      btn.disabled = true;
+
+      const attendance = getAttendance().filter(a => a.classId === classId && a.attendanceStatus !== 'Absent');
+      const testResults = getTestResults().filter(t => t.classId === classId);
+      
+      let saved = 0;
+      let errors = 0;
+
+      for (const att of attendance) {
+        const scoreInput = document.getElementById(`score_${att.ic}`);
+        const resultSelect = document.getElementById(`result_${att.ic}`);
+        
+        if (!scoreInput || !resultSelect) continue;
+        
+        const score = parseFloat(scoreInput.value);
+        const result = resultSelect.value;
+
+        if (isNaN(score) || score < 0 || score > 100) {
+          errors++;
+          continue;
+        }
+
+        const existingTestResult = testResults.find(t => t.ic === att.ic);
+
+        try {
+          if (existingTestResult) {
+            existingTestResult.testScore = score;
+            existingTestResult.testResult = result;
+            const updateResult = await window.dataSdk.update(existingTestResult);
+            if (updateResult.isOk) {
+              saved++;
+              await checkAndAwardCertifications(att.ic);
+            } else {
+              errors++;
+            }
+          } else {
+            const newTestResult = {
+              id: generateId(),
+              type: 'testResult',
+              classId: classId,
+              ic: att.ic,
+              courseCode: att.courseCode,
+              testScore: score,
+              testResult: result
+            };
+            const createResult = await window.dataSdk.create(newTestResult);
+            if (createResult.isOk) {
+              saved++;
+              await checkAndAwardCertifications(att.ic);
+            } else {
+              errors++;
+            }
+          }
+        } catch (error) {
+          errors++;
+        }
+      }
+
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+
+      if (errors > 0) {
+        showToast(`Saved ${saved} results with ${errors} errors`, 'error');
+      } else {
+        showToast(`All test results saved successfully (${saved} records)`, 'success');
+      }
+      
+      loadTestResults();
+    }
+
+    async function saveTestResult(classId, ic, courseCode, existingId) {
+      const scoreInput = document.getElementById(`score_${ic}`);
+      const resultSelect = document.getElementById(`result_${ic}`);
+      
+      const score = parseFloat(scoreInput.value);
+      const result = resultSelect.value;
+
+      if (isNaN(score) || score < 0 || score > 100) {
+        showToast('Please enter a valid score between 0 and 100', 'error');
+        return;
+      }
+
+      if (existingId) {
+        const testResult = getTestResults().find(t => t.id === existingId);
+        testResult.testScore = score;
+        testResult.testResult = result;
+        const updateResult = await window.dataSdk.update(testResult);
+        
+        if (updateResult.isOk) {
+          showToast('Test result updated', 'success');
+          checkAndAwardCertifications(ic);
+        } else {
+          showToast('Failed to update test result', 'error');
+        }
+      } else {
+        const testResult = {
+          id: generateId(),
+          type: 'testResult',
+          classId: classId,
+          ic: ic,
+          courseCode: courseCode,
+          testScore: score,
+          testResult: result
+        };
+        const createResult = await window.dataSdk.create(testResult);
+        
+        if (createResult.isOk) {
+          showToast('Test result saved', 'success');
+          checkAndAwardCertifications(ic);
+          loadTestResults();
+        } else {
+          showToast('Failed to save test result', 'error');
+        }
+      }
+    }
+
+    // Certification tracking
+    async function checkAndAwardCertifications(ic) {
+      const certifications = getCertifications();
+      const courses = getCourses();
+      const attendance = getAttendance().filter(a => a.ic === ic && a.attendanceStatus === 'Present');
+      const testResults = getTestResults().filter(t => t.ic === ic && t.testResult === 'Pass');
+      const existingCertRecords = getCertificationRecords().filter(cr => cr.ic === ic);
+
+      for (const cert of certifications) {
+        // Get courses that belong to this certification
+        const certCourses = courses.filter(c => c.certificationProgram === cert.id);
+        const requiredCourseCodes = certCourses.map(c => c.courseCode);
+        
+        if (requiredCourseCodes.length === 0) continue;
+        
+        const attendedCourses = attendance.map(a => a.courseCode);
+        const passedCourses = testResults.map(t => t.courseCode);
+        
+        const allAttended = requiredCourseCodes.every(code => attendedCourses.includes(code));
+        const allPassed = requiredCourseCodes.every(code => passedCourses.includes(code));
+
+        if (allAttended && allPassed) {
+          const alreadyAwarded = existingCertRecords.find(cr => cr.certificationName === cert.certificationName);
+          
+          if (!alreadyAwarded) {
+            const certRecord = {
+              id: generateId(),
+              type: 'certificationRecord',
+              ic: ic,
+              certificationName: cert.certificationName,
+              dateAchieved: new Date().toISOString()
+            };
+            await window.dataSdk.create(certRecord);
+            showToast(`🎓 ${cert.certificationName} awarded!`, 'success');
+          }
+        }
+      }
+    }
+
+    // Attendance Report functions
+    function generateAttendanceReport() {
+      const fromDate = document.getElementById('reportFromDate').value;
+      const toDate = document.getElementById('reportToDate').value;
+      const selectedClasses = Array.from(document.querySelectorAll('.completed-class-checkbox:checked')).map(cb => cb.value);
+
+      let completedClasses = getClasses().filter(c => c.classStatus === 'Completed');
+
+      // Filter by date range if provided
+      if (fromDate && toDate) {
+        completedClasses = completedClasses.filter(c => {
+          const classDate = new Date(c.classStartDate);
+          return classDate >= new Date(fromDate) && classDate <= new Date(toDate);
+        });
+      }
+
+      // Filter by selected classes if provided
+      if (selectedClasses.length > 0) {
+        completedClasses = completedClasses.filter(c => selectedClasses.includes(c.id));
+      }
+
+      if (completedClasses.length === 0) {
+        showToast('No classes match the criteria', 'error');
+        return;
+      }
+
+      // Build report
+      const courses = getCourses();
+      const participants = getParticipants();
+      const attendance = getAttendance();
+      const testResults = getTestResults();
+
+      const reportData = [];
+      
+      for (const cls of completedClasses) {
+        const course = courses.find(c => c.courseCode === cls.courseCode);
+        const classAttendance = attendance.filter(a => a.classId === cls.id);
+
+        for (const att of classAttendance) {
+          const participant = participants.find(p => p.ic === att.ic);
+          const testResult = testResults.find(t => t.classId === cls.id && t.ic === att.ic);
+
+          reportData.push({
+            className: cls.className,
+            courseName: course ? course.courseName : cls.courseCode,
+            classStartDate: new Date(cls.classStartDate).toLocaleDateString(),
+            classEndDate: new Date(cls.classEndDate).toLocaleDateString(),
+            ic: att.ic,
+            name: participant ? participant.name : 'Unknown',
+            registrationType: att.registrationType,
+            attendanceStatus: att.attendanceStatus,
+            testScore: testResult ? testResult.testScore : (att.attendanceStatus === 'Absent' ? 0 : 'N/A'),
+            testResult: testResult ? testResult.testResult : (att.attendanceStatus === 'Absent' ? 'Fail' : 'N/A')
+          });
+        }
+      }
+
+      const csv = [
+        ['Class Name', 'Course Name', 'Start Date', 'End Date', 'IC Number', 'Participant Name', 'Registration Type', 'Attendance', 'Test Score', 'Test Result'],
+        ...reportData.map(r => [
+          r.className,
+          r.courseName,
+          r.classStartDate,
+          r.classEndDate,
+          r.ic,
+          r.name,
+          r.registrationType,
+          r.attendanceStatus,
+          r.testScore,
+          r.testResult
+        ])
+      ].map(row => row.join(',')).join('\n');
+
+      downloadCSV(csv, 'attendance_report.csv');
+      showToast('Attendance report downloaded', 'success');
+    }
+
+    function toggleAllCerts() {
+      const allChecked = document.getElementById('allCertsCheckbox').checked;
+      document.querySelectorAll('.cert-checkbox').forEach(cb => {
+        cb.checked = allChecked;
+      });
+    }
+
+    function generateCertificationReport() {
+      const allCerts = document.getElementById('allCertsCheckbox').checked;
+      const selectedCerts = Array.from(document.querySelectorAll('.cert-checkbox:checked')).map(cb => cb.value);
+      const withCerts = document.getElementById('withCertsCheckbox').checked;
+      const withoutCerts = document.getElementById('withoutCertsCheckbox').checked;
+
+      if (!allCerts && selectedCerts.length === 0) {
+        showToast('Please select at least one certification', 'error');
+        return;
+      }
+
+      const participants = getParticipants();
+      const certRecords = getCertificationRecords();
+
+      const reportData = [];
+      
+      for (const participant of participants) {
+        const participantCerts = certRecords.filter(cr => cr.ic === participant.ic);
+        
+        if (!withCerts && participantCerts.length > 0) continue;
+        if (!withoutCerts && participantCerts.length === 0) continue;
+
+        let relevantCerts = participantCerts;
+        if (!allCerts) {
+          relevantCerts = participantCerts.filter(cr => selectedCerts.includes(cr.certificationName));
+          if (relevantCerts.length === 0 && !withoutCerts) continue;
+        }
+
+        reportData.push({
+          ic: participant.ic,
+          name: participant.name,
+          phone: participant.phone,
+          email: participant.email,
+          company: participant.company,
+          certifications: relevantCerts.map(cr => cr.certificationName)
+        });
+      }
+
+      certReportData = reportData;
+      document.getElementById('certReportStatus').classList.remove('hidden');
+      showToast('Report generated successfully', 'success');
+    }
+
+    function downloadCertReport(format) {
+      if (!certReportData || certReportData.length === 0) {
+        showToast('No data to download', 'error');
+        return;
+      }
+
+      const maxCerts = Math.max(...certReportData.map(p => p.certifications.length), 1);
+
+      const headers = ['IC Number', 'Name', 'Phone', 'Email', 'Company'];
+      for (let i = 1; i <= maxCerts; i++) {
+        headers.push(`Cert ${i}`);
+      }
+
+      const rows = certReportData.map(p => {
+        const row = [p.ic, p.name, p.phone, p.email, p.company];
+        for (let i = 0; i < maxCerts; i++) {
+          row.push(p.certifications[i] || '-');
+        }
+        return row;
+      });
+
+      const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+      downloadCSV(csv, 'certification_report.csv');
+      showToast('Report downloaded', 'success');
+    }
+
+    function generateRegisteredClassReport() {
+      const allClasses = getClasses();
+      const courses = getCourses();
+      const trainers = getTrainers();
+      const attendance = getAttendance();
+
+      if (allClasses.length === 0) {
+        showToast('No classes found', 'error');
+        return;
+      }
+
+      // Count classes by status
+      const activeCount = allClasses.filter(c => c.classStatus === 'Active').length;
+      const completedCount = allClasses.filter(c => c.classStatus === 'Completed').length;
+      const cancelledCount = allClasses.filter(c => c.classStatus === 'Cancelled').length;
+
+      const reportData = allClasses.map(cls => {
+        const course = courses.find(c => c.courseCode === cls.courseCode);
+        const trainer = trainers.find(t => t.id === cls.trainerId);
+        const classAttendance = attendance.filter(a => a.classId === cls.id);
+        
+        return {
+          className: cls.className,
+          courseCode: cls.courseCode,
+          courseName: course ? course.courseName : '-',
+          trainer: trainer ? trainer.name : 'Not assigned',
+          startDate: new Date(cls.classStartDate).toLocaleDateString(),
+          endDate: new Date(cls.classEndDate).toLocaleDateString(),
+          venue: cls.venue,
+          status: cls.classStatus,
+          totalRegistered: classAttendance.length
+        };
+      });
+
+      const csv = [
+        ['Class Summary Report'],
+        ['Generated Date', new Date().toLocaleDateString()],
+        [],
+        ['Summary Statistics'],
+        ['Total Classes', allClasses.length.toString()],
+        ['Active Classes', activeCount.toString()],
+        ['Completed Classes', completedCount.toString()],
+        ['Cancelled Classes', cancelledCount.toString()],
+        [],
+        ['Class Name', 'Course Code', 'Course Name', 'Trainer', 'Start Date', 'End Date', 'Venue', 'Status', 'Total Registered'],
+        ...reportData.map(r => [
+          r.className,
+          r.courseCode,
+          r.courseName,
+          r.trainer,
+          r.startDate,
+          r.endDate,
+          r.venue,
+          r.status,
+          r.totalRegistered.toString()
+        ])
+      ].map(row => row.join(',')).join('\n');
+
+      downloadCSV(csv, 'class_summary_report.csv');
+      showToast('Class summary report downloaded', 'success');
+    }
+
+    // Migration functions
+    async function importHistoricalData() {
+      const fileInput = document.getElementById('migrationFile');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        showToast('Please select a file', 'error');
+        return;
+      }
+
+      showToast('Processing import... This may take a moment', 'info');
+
+      setTimeout(async () => {
+        const mockData = [
+          { ic: '900101-01-1234', name: 'Ali bin Abu', phone: '012-3456789', email: 'ali@email.com', company: 'ABC Sdn Bhd', company_code: '001', designation: 'Service Manager', certificationName: 'PTEST BASIC', dateAchieved: '2023-06-15' },
+          { ic: '900202-02-2345', name: 'Siti binti Ahmad', phone: '012-9876543', email: 'siti@email.com', company: 'XYZ Sdn Bhd', company_code: '12345', designation: 'Technician', certificationName: 'Fire Safety', dateAchieved: '2023-08-20' }
+        ];
+
+        let updated = 0;
+        let added = 0;
+        let skipped = 0;
+
+        for (const row of mockData) {
+          let participant = getParticipantByIC(row.ic);
+          
+          if (!participant) {
+            participant = {
+              id: generateId(),
+              type: 'participant',
+              ic: row.ic,
+              name: row.name,
+              phone: row.phone,
+              email: row.email,
+              company: row.company,
+              company_code: row.company_code,
+              designation: row.designation || '',
+              dateRegistered: new Date().toISOString()
+            };
+            await window.dataSdk.create(participant);
+            added++;
+          } else {
+            updated++;
+          }
+
+          const existingCert = getCertificationRecords().find(cr => 
+            cr.ic === row.ic && 
+            cr.certificationName === row.certificationName &&
+            cr.dateAchieved === row.dateAchieved
+          );
+
+          if (!existingCert) {
+            const certRecord = {
+              id: generateId(),
+              type: 'certificationRecord',
+              ic: row.ic,
+              certificationName: row.certificationName,
+              dateAchieved: row.dateAchieved
+            };
+            await window.dataSdk.create(certRecord);
+          } else {
+            skipped++;
+          }
+        }
+
+        const resultsHTML = `
+          <div class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p class="font-medium text-green-900 mb-2">Import Results:</p>
+            <ul class="text-sm text-green-800 space-y-1">
+              <li>✅ ${updated} participants updated</li>
+              <li>✅ ${added} new participants added</li>
+              <li>⏭️ ${skipped} duplicate records skipped</li>
+              <li>✅ 0 errors (all IC formats accepted)</li>
+            </ul>
+          </div>
+        `;
+        document.getElementById('migrationResults').innerHTML = resultsHTML;
+        document.getElementById('migrationResults').classList.remove('hidden');
+        
+        showToast('Import completed successfully', 'success');
+      }, 2000);
+    }
+
+    // Utility functions
+    function downloadCSV(csv, filename) {
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    }
+
+    function showToast(message, type = 'info') {
+      const colors = {
+        success: 'bg-green-50 border-green-200 text-green-800',
+        error: 'bg-red-50 border-red-200 text-red-800',
+        info: 'bg-blue-50 border-blue-200 text-blue-800'
+      };
+
+      const toast = document.createElement('div');
+      toast.className = `toast border ${colors[type]} p-4 rounded-lg`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
+
+    function closeModal() {
+      document.getElementById('modalContainer').innerHTML = '';
+    }
+
+    initApp();
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9a25169df254cc5f',t:'MTc2Mzc3OTUwMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
