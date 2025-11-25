@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
  <head>
@@ -6,6 +7,7 @@
   <title>Training Management System</title>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     // Firebase config - replace with your actual config if changed
     const firebaseConfig = {
@@ -521,6 +523,14 @@
         <div class="space-y-4">
          <div><label class="block text-sm font-medium text-gray-700 mb-2">Upload Excel file with old records</label> <input type="file" id="migrationFile" accept=".xlsx,.xls,.csv" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
          </div>
+         <div>
+  <button type="button"
+          onclick="downloadMigrationTemplate()"
+          class="w-full px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">
+    📥 Download Template
+  </button>
+</div>
+
          <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p class="font-medium text-blue-900 mb-2">Required columns:</p>
           <ul class="text-sm text-blue-800 space-y-1 ml-4">
@@ -530,7 +540,6 @@
            <li>• Email</li>
            <li>• Company</li>
            <li>• Certification Name</li>
-           <li>• Date Achieved</li>
           </ul>
          </div><button onclick="importHistoricalData()" class="btn-primary px-6 py-3 text-white rounded-lg font-medium w-full">Import Data</button>
          <div id="migrationResults" class="hidden"></div>
@@ -626,9 +635,13 @@
       return allData.filter(d => d.type === 'certificationRecord');
     }
 
-    function getParticipantByIC(ic) {
-      return getParticipants().find(p => p.ic === ic);
-    }
+    function normalizeIC(ic) {
+  return (ic || '').toString().replace(/\D/g, '');
+}
+
+function getParticipantByIC(ic) {
+  const target = normalizeIC(ic);
+  return getParticipants().find(p => normalizeIC(p.ic) === target);    }
 
     function getCourseByCode(code) {
       return getCourses().find(c => c.courseCode === code);
@@ -981,74 +994,109 @@
     }
 
     // Registration functions
-    async function registerSingleParticipant(event) {
-      event.preventDefault();
+// Registration functions
+async function registerSingleParticipant(event) {
+  event.preventDefault();
 
-      const btn = document.getElementById('singleRegBtn');
-      const originalText = btn.innerHTML;
-      btn.innerHTML = 'Registering...<span class="spinner"></span>';
-      btn.disabled = true;
+  const btn = document.getElementById('singleRegBtn');
+  const originalText = btn.innerHTML;
+  btn.innerHTML = 'Registering...<span class="spinner"></span>';
+  btn.disabled = true;
 
-      const classId = document.getElementById('singleRegClass').value;
-      const ic = document.getElementById('singleRegIC').value;
-      const name = document.getElementById('singleRegName').value;
-      const phone = document.getElementById('singleRegPhone').value;
-      const email = document.getElementById('singleRegEmail').value;
-      const company = document.getElementById('singleRegCompany').value;
-      const companyCode = document.getElementById('singleRegCompanyCode').value;
+  const classId = document.getElementById('singleRegClass').value;
 
-      const cls = getClasses().find(c => c.id === classId);
-      
-      // Check if already registered
-      const existingAttendance = getAttendance().find(a => a.classId === classId && a.ic === ic);
-      if (existingAttendance) {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-        showToast('Participant already registered to this class', 'error');
-        return;
-      }
+  // 🔹 Normalize IC – buang semua bukan nombor
+  let ic = document.getElementById('singleRegIC').value;
+  ic = normalizeIC(ic);
 
-      // Create or update participant
-      let participant = getParticipantByIC(ic);
-      if (!participant) {
-        participant = {
-          id: generateId(),
-          type: 'participant',
-          ic: ic,
-          name: name,
-          phone: phone,
-          email: email,
-          company: company,
-          company_code: companyCode,
-          designation: document.getElementById('singleRegDesignation').value,
-          dateRegistered: new Date().toISOString()
-        };
-        await window.dataSdk.create(participant);
-      }
+  const name = document.getElementById('singleRegName').value;
+  const phone = document.getElementById('singleRegPhone').value;
+  const email = document.getElementById('singleRegEmail').value;
+  const company = document.getElementById('singleRegCompany').value;
+  const companyCode = document.getElementById('singleRegCompanyCode').value;
+  const designation = document.getElementById('singleRegDesignation').value;
 
-      // Create attendance record
-      const attendanceRecord = {
+  if (!classId || !ic || !name || !company || !companyCode || !designation) {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+    showToast('Please fill in all required fields', 'error');
+    return;
+  }
+
+  const cls = getClasses().find(c => c.id === classId);
+  if (!cls) {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+    showToast('Selected class not found', 'error');
+    return;
+  }
+
+  // Check kalau dah register (guna normalizeIC supaya match data lama yg ada dash)
+  const existingAttendance = getAttendance().find(a => {
+    return a.classId === classId && normalizeIC(a.ic) === ic;
+  });
+  if (existingAttendance) {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+    showToast('Participant already registered to this class', 'error');
+    return;
+  }
+
+  try {
+    // Create / update participant
+    let participant = getParticipantByIC(ic);
+    if (!participant) {
+      participant = {
         id: generateId(),
-        type: 'attendance',
-        classId: classId,
-        ic: ic,
-        courseCode: cls.courseCode,
-        registrationType: 'Pre-registered',
-        attendanceStatus: 'Pending'
+        type: 'participant',
+        ic: ic, // digits only
+        name: name,
+        phone: phone,
+        email: email,
+        company: company,
+        company_code: companyCode,
+        designation: designation,
+        dateRegistered: new Date().toISOString()
       };
-
-      const result = await window.dataSdk.create(attendanceRecord);
-
-      btn.innerHTML = originalText;
-      btn.disabled = false;
-
-      if (result.isOk) {
-        showToast('Participant registered successfully', 'success');
-        event.target.reset();
-      } else {
-        showToast('Failed to register participant', 'error');
-      }
+      await window.dataSdk.create(participant);
+    } else {
+      // Update info terkini
+      participant.name = name;
+      participant.phone = phone;
+      participant.email = email;
+      participant.company = company;
+      participant.company_code = companyCode;
+      participant.designation = designation;
+      await window.dataSdk.update(participant);
     }
+
+    // Create attendance record
+    const attendanceRecord = {
+      id: generateId(),
+      type: 'attendance',
+      classId: classId,
+      ic: ic,
+      courseCode: cls.courseCode,
+      registrationType: 'Pre-registered',
+      attendanceStatus: 'Pending'
+    };
+
+    const result = await window.dataSdk.create(attendanceRecord);
+
+    if (result.isOk) {
+      showToast('Participant registered successfully', 'success');
+      event.target.reset();
+    } else {
+      showToast('Failed to register participant', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Error while registering participant', 'error');
+  } finally {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  }
+}
 
     function downloadRegistrationTemplate() {
       const csv = [
@@ -1058,156 +1106,288 @@
 
       downloadCSV(csv, 'registration_template.csv');
       showToast('Template downloaded', 'success');
-    }
+    }function downloadMigrationTemplate() {
+  const csv = [
+    ['IC Number', 'Name', 'Phone', 'Email', 'Company', 'Company Code', 'Designation', 'Certification Name'],
+    ['', '', '', '', '', '', '', '']
+  ].map(row => row.join(',')).join('\n');
 
-    async function processBulkRegistration() {
-      const classId = document.getElementById('bulkRegClass').value;
-      const fileInput = document.getElementById('bulkRegFile');
-      const file = fileInput.files[0];
+  downloadCSV(csv, 'history_import_template.csv');
+  showToast('Template downloaded', 'success');
+}
 
-      if (!classId) {
-        showToast('Please select a class', 'error');
-        return;
-      }
 
-      if (!file) {
-        showToast('Please select a file', 'error');
-        return;
-      }
+    // Helper untuk parse CSV bila user upload .csv
+function parseCsvToRows(csvText) {
+  const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== '');
+  if (lines.length < 2) return [];
 
-      const btn = document.getElementById('bulkRegBtn');
-      const originalText = btn.innerHTML;
-      btn.innerHTML = 'Processing...<span class="spinner"></span>';
-      btn.disabled = true;
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  const rows = [];
 
-      showToast('Processing bulk registration...', 'info');
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) continue;
 
-      setTimeout(async () => {
-        // Mock data for demonstration with validation scenarios
-        const mockData = [
-          { ic: '900101-01-1234', name: 'Ali bin Abu', phone: '012-3456789', email: 'ali@email.com', company: 'ABC Sdn Bhd', company_code: '001', designation: 'Service Manager' },
-          { ic: '900202-02-2345', name: 'Siti binti Ahmad', phone: '', email: '', company: 'XYZ Sdn Bhd', company_code: '12345', designation: 'Technician' }
-        ];
+    const cells = line.split(',');
+    const row = {};
+    headers.forEach((h, idx) => {
+      row[h] = (cells[idx] || '').replace(/^"|"$/g, '').trim();
+    });
+    rows.push(row);
+  }
 
-        const validDesignations = ['Service Manager', 'Service Advisor', 'CRE/CRA', 'Technician', 'Parts Controller', 'Job Controller', 'BP Manager', 'Insurance Claim Advisor', 'BP Technician'];
-        const cls = getClasses().find(c => c.id === classId);
-        let registered = 0;
-        let skipped = 0;
-        let invalidRows = 0;
+  return rows;
+}
 
-        for (const row of mockData) {
-          try {
-            // Validate required fields
-            if (!row.ic || !row.ic.trim()) {
-              invalidRows++;
-              continue;
-            }
-            if (!row.name || !row.name.trim()) {
-              invalidRows++;
-              continue;
-            }
-            if (!row.company || !row.company.trim()) {
-              invalidRows++;
-              continue;
-            }
-            if (!row.company_code || !row.company_code.trim()) {
-              invalidRows++;
-              continue;
-            }
-            if (!row.designation || !row.designation.trim()) {
-              invalidRows++;
-              continue;
-            }
+async function processBulkRegistration() {
+  const classId = document.getElementById('bulkRegClass').value;
+  const fileInput = document.getElementById('bulkRegFile');
+  const file = fileInput.files[0];
 
-            // Validate IC number (numbers only)
-            if (!/^\d+$/.test(row.ic.trim())) {
-              invalidRows++;
-              continue;
-            }
+  if (!classId) {
+    showToast('Please select a class', 'error');
+    return;
+  }
 
-            // Validate company code (numbers only)
-            if (!/^\d+$/.test(row.company_code.trim())) {
-              invalidRows++;
-              continue;
-            }
+  if (!file) {
+    showToast('Please select a file', 'error');
+    return;
+  }
 
-            // Validate designation
-            if (!validDesignations.includes(row.designation.trim())) {
-              invalidRows++;
-              continue;
-            }
+  const btn = document.getElementById('bulkRegBtn');
+  const originalText = btn.innerHTML;
+  btn.innerHTML = 'Processing...<span class="spinner"></span>';
+  btn.disabled = true;
 
-            // Check if already registered in this class
-            const existingAttendance = getAttendance().find(a => a.classId === classId && a.ic === row.ic.trim());
-            if (existingAttendance) {
-              skipped++;
-              continue;
-            }
+  const resultsDiv = document.getElementById('bulkRegResults');
+  resultsDiv.classList.add('hidden');
+  resultsDiv.innerHTML = '';
 
-            // Create or update participant
-            let participant = getParticipantByIC(row.ic.trim());
-            if (!participant) {
-              participant = {
-                id: generateId(),
-                type: 'participant',
-                ic: row.ic.trim(),
-                name: row.name.trim(),
-                phone: row.phone ? row.phone.trim() : '',
-                email: row.email ? row.email.trim() : '',
-                company: row.company.trim(),
-                company_code: row.company_code.trim(),
-                designation: row.designation.trim(),
-                dateRegistered: new Date().toISOString()
-              };
-              await window.dataSdk.create(participant);
-            } else {
-              // Update existing participant info
-              participant.name = row.name.trim();
-              participant.phone = row.phone ? row.phone.trim() : participant.phone;
-              participant.email = row.email ? row.email.trim() : participant.email;
-              participant.company = row.company.trim();
-              participant.company_code = row.company_code.trim();
-              participant.designation = row.designation.trim();
-              await window.dataSdk.update(participant);
-            }
+  const cls = getClasses().find(c => c.id === classId);
+  if (!cls) {
+    showToast('Selected class not found', 'error');
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+    return;
+  }
 
-            // Create attendance record
-            const attendanceRecord = {
-              id: generateId(),
-              type: 'attendance',
-              classId: classId,
-              ic: row.ic.trim(),
-              courseCode: cls.courseCode,
-              registrationType: 'Pre-registered',
-              attendanceStatus: 'Pending'
-            };
+  const validDesignations = [
+    'Service Manager',
+    'Service Advisor',
+    'Technician',
+    'Warranty Admin',
+    'Customer Relations',
+    'Dealer Principal',
+    'BP Manager',
+    'Insurance Claim Advisor',
+    'BP Technician'
+  ];
 
-            await window.dataSdk.create(attendanceRecord);
-            registered++;
-          } catch (error) {
-            invalidRows++;
-          }
+  const reader = new FileReader();
+
+  reader.onload = async (e) => {
+    try {
+      let rows = [];
+      const fileName = file.name.toLowerCase();
+
+      if (fileName.endsWith('.csv')) {
+        // 📂 CSV
+        const text = e.target.result;
+        rows = parseCsvToRows(text);
+      } else {
+        // 📂 Excel (.xlsx, .xlsm, etc.) – guna SheetJS
+        if (typeof XLSX === 'undefined') {
+          throw new Error('Excel parser (XLSX) not loaded');
         }
 
-        const resultsHTML = `
-          <div class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <p class="font-medium text-green-900 mb-2">Bulk Registration Results:</p>
-            <ul class="text-sm text-green-800 space-y-1">
-              <li>✅ ${registered} participants registered successfully</li>
-              <li>⏭️ ${skipped} already registered in this class (skipped)</li>
-              <li>❌ ${invalidRows} invalid rows (missing required fields, invalid IC/company code format, or wrong designation)</li>
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+
+        // Guna row pertama sebagai header (IC Number, Full Name, etc.)
+        rows = XLSX.utils.sheet_to_json(worksheet, {
+          defval: ''
+        });
+      }
+
+      let registered = 0;
+      let skipped = 0;
+      let invalidRows = 0;
+      const invalidRowDetails = [];
+
+      // Excel/CSV: row 1 = header → data bermula row 2
+      for (let idx = 0; idx < rows.length; idx++) {
+        const r = rows[idx];
+        const excelRowNumber = idx + 2; // supaya match Excel (row 2, 3, 4, ...)
+
+        try {
+          // Map ikut header template
+          const icRaw = (r['IC Number'] || '').toString().trim();
+          const name = (r['Full Name'] || '').toString().trim();
+          const phone = (r['Phone'] || '').toString().trim();
+          const email = (r['Email'] || '').toString().trim();
+          const company = (r['Company'] || '').toString().trim();
+          const companyCodeRaw = (r['Company Code'] || '').toString().trim();
+          const designationRaw = (r['Designation'] || '').toString().trim();
+
+          // Normalize IC & Company Code – ambil nombor je
+          const ic = normalizeIC(icRaw);
+          const companyCode = (companyCodeRaw || '').replace(/\D/g, '');
+          const designation = designationRaw;
+
+          // Kalau row kosong betul-betul, skip senyap-senyap
+          if (!icRaw && !name && !company && !companyCodeRaw && !designationRaw) {
+            continue;
+          }
+
+          // Helper untuk log invalid row
+          const addInvalid = (reason) => {
+            invalidRows++;
+            invalidRowDetails.push({
+              row: excelRowNumber,
+              ic: icRaw,
+              reason
+            });
+          };
+
+          // ✅ Wajib isi: IC, Name, Company, Company Code, Designation
+          if (!ic || !name || !company || !companyCode || !designation) {
+            addInvalid('Missing required fields (IC, Name, Company, Company Code, or Designation).');
+            continue;
+          }
+
+          // IC & Company Code mesti nombor (lepas dibersihkan)
+          if (!/^\d+$/.test(ic)) {
+            addInvalid('Invalid IC format after cleaning (must be digits only).');
+            continue;
+          }
+
+          if (!/^\d+$/.test(companyCode)) {
+            addInvalid('Invalid Company Code (must be digits only).');
+            continue;
+          }
+
+          // Designation mesti dalam senarai
+          if (!validDesignations.includes(designation)) {
+            addInvalid('Invalid designation (must match allowed list).');
+            continue;
+          }
+
+          // Check kalau dah pernah register ke class ni
+          const existingAttendance = getAttendance().find(a => {
+            const aIc = normalizeIC(a.ic);
+            return a.classId === classId && aIc === ic;
+          });
+
+          if (existingAttendance) {
+            skipped++;
+            continue;
+          }
+
+          // Create / update participant (IC normalized)
+          let participant = getParticipantByIC(ic);
+          if (!participant) {
+            participant = {
+              id: generateId(),
+              type: 'participant',
+              ic: ic, // digits only
+              name: name,
+              phone: phone || '',
+              email: email || '',
+              company: company,
+              company_code: companyCode,
+              designation: designation,
+              dateRegistered: new Date().toISOString()
+            };
+            await window.dataSdk.create(participant);
+          } else {
+            // Update info terkini – phone/email optional
+            participant.name = name;
+            if (phone) participant.phone = phone;
+            if (email) participant.email = email;
+            participant.company = company;
+            participant.company_code = companyCode;
+            participant.designation = designation;
+            await window.dataSdk.update(participant);
+          }
+
+          // Create attendance record
+          const attendanceRecord = {
+            id: generateId(),
+            type: 'attendance',
+            classId: classId,
+            ic: ic, // digits only
+            courseCode: cls.courseCode,
+            registrationType: 'Pre-registered',
+            attendanceStatus: 'Pending'
+          };
+
+          await window.dataSdk.create(attendanceRecord);
+          registered++;
+        } catch (errRow) {
+          invalidRows++;
+          invalidRowDetails.push({
+            row: excelRowNumber,
+            ic: (r['IC Number'] || '').toString().trim(),
+            reason: 'Unexpected error while processing this row.'
+          });
+        }
+      }
+
+      // Build summary HTML
+      let detailsSection = '';
+
+      if (invalidRowDetails.length > 0) {
+        const items = invalidRowDetails.map(d => {
+          const icText = d.ic ? ` (IC: ${d.ic})` : '';
+          return `<li>Row ${d.row}${icText} – ${d.reason}</li>`;
+        }).join('');
+
+        detailsSection = `
+          <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p class="font-medium text-red-900 mb-2">Invalid row details:</p>
+            <ul class="text-xs text-red-800 space-y-1">
+              ${items}
             </ul>
           </div>
         `;
-        document.getElementById('bulkRegResults').innerHTML = resultsHTML;
-        document.getElementById('bulkRegResults').classList.remove('hidden');
+      }
 
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-        
-        showToast('Bulk registration completed', 'success');
-      }, 2000);
+      const resultsHTML = `
+        <div class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <p class="font-medium text-green-900 mb-2">Bulk Registration Results:</p>
+          <ul class="text-sm text-green-800 space-y-1">
+            <li>✅ ${registered} participants registered successfully</li>
+            <li>⏭️ ${skipped} already registered in this class (skipped)</li>
+            <li>❌ ${invalidRows} invalid rows (missing required fields, invalid IC/company code format, or wrong designation)</li>
+          </ul>
+          ${detailsSection}
+        </div>
+      `;
+
+      resultsDiv.innerHTML = resultsHTML;
+      resultsDiv.classList.remove('hidden');
+      showToast('Bulk registration completed', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('Error while processing bulk registration', 'error');
+    } finally {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
     }
+  };
+
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith('.csv')) {
+    reader.readAsText(file);
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+
 
     // Participant functions
     function editParticipant(ic) {
@@ -1333,31 +1513,36 @@
       closeModal();
     }
 
-    function downloadParticipants() {
-      const participants = getParticipants();
+function downloadParticipants() {
+  const participants = getParticipants();
       
-      if (participants.length === 0) {
-        showToast('No participants to download', 'error');
-        return;
-      }
+  if (participants.length === 0) {
+    showToast('No participants to download', 'error');
+    return;
+  }
 
-      const csv = [
-        ['IC Number', 'Full Name', 'Phone', 'Email', 'Company', 'Company Code', 'Designation', 'Date Registered'],
-        ...participants.map(p => [
-          p.ic,
-          p.name,
-          p.phone,
-          p.email,
-          p.company,
-          p.company_code || '-',
-          p.designation || '-',
-          new Date(p.dateRegistered).toLocaleDateString()
-        ])
-      ].map(row => row.join(',')).join('\n');
+  // Header CSV
+  const header = ['IC Number', 'Full Name', 'Phone', 'Email', 'Company', 'Company Code', 'Designation', 'Date Registered'];
 
-      downloadCSV(csv, 'participants.csv');
-      showToast('Participants downloaded successfully', 'success');
-    }
+  // Row data
+  const rows = participants.map(p => [
+    p.ic,
+    p.name,
+    p.phone,
+    p.email,
+    p.company,
+    p.company_code || '-',
+    p.designation || '-',
+    p.dateRegistered ? new Date(p.dateRegistered).toLocaleDateString() : ''
+  ]);
+
+  // Gabung header + rows
+  const csv = [header, ...rows].map(row => row.join(',')).join('\n');
+
+  downloadCSV(csv, 'participants.csv');
+  showToast('Participants downloaded successfully', 'success');
+}
+
 
     // Trainer functions
     function showAddTrainerModal() {
@@ -2656,39 +2841,55 @@
           const participant = participants.find(p => p.ic === att.ic);
           const testResult = testResults.find(t => t.classId === cls.id && t.ic === att.ic);
 
-          reportData.push({
+                   reportData.push({
             className: cls.className,
             courseName: course ? course.courseName : cls.courseCode,
             classStartDate: new Date(cls.classStartDate).toLocaleDateString(),
             classEndDate: new Date(cls.classEndDate).toLocaleDateString(),
             ic: att.ic,
             name: participant ? participant.name : 'Unknown',
+            company: participant ? participant.company : '',
+            company_code: participant ? (participant.company_code || '') : '',
             registrationType: att.registrationType,
             attendanceStatus: att.attendanceStatus,
             testScore: testResult ? testResult.testScore : (att.attendanceStatus === 'Absent' ? 0 : 'N/A'),
             testResult: testResult ? testResult.testResult : (att.attendanceStatus === 'Absent' ? 'Fail' : 'N/A')
           });
+
         }
       }
 
-      const csv = [
-        ['Class Name', 'Course Name', 'Start Date', 'End Date', 'IC Number', 'Participant Name', 'Registration Type', 'Attendance', 'Test Score', 'Test Result'],
-        ...reportData.map(r => [
-          r.className,
-          r.courseName,
-          r.classStartDate,
-          r.classEndDate,
-          r.ic,
-          r.name,
-          r.registrationType,
-          r.attendanceStatus,
-          r.testScore,
-          r.testResult
-        ])
-      ].map(row => row.join(',')).join('\n');
+const header = [
+  'Class Name',
+  'Course Name',
+  'Start Date',
+  'End Date',
+  'IC Number',
+  'Participant Name',
+  'Registration Type',
+  'Attendance',
+  'Test Score',
+  'Test Result'
+];
 
-      downloadCSV(csv, 'attendance_report.csv');
-      showToast('Attendance report downloaded', 'success');
+const rows = reportData.map(r => [
+  r.className,
+  r.courseName,
+  r.classStartDate,
+  r.classEndDate,
+  r.ic,
+  r.name,
+  r.registrationType,
+  r.attendanceStatus,
+  r.testScore,
+  r.testResult
+]);
+
+const csv = [header, ...rows].map(row => row.join(',')).join('\n');
+
+downloadCSV(csv, 'attendance_report.csv');
+showToast('Attendance report downloaded', 'success');
+
     }
 
     function toggleAllCerts() {
@@ -2726,14 +2927,16 @@
           if (relevantCerts.length === 0 && !withoutCerts) continue;
         }
 
-        reportData.push({
+              reportData.push({
           ic: participant.ic,
           name: participant.name,
           phone: participant.phone,
           email: participant.email,
           company: participant.company,
+          company_code: participant.company_code || '',
           certifications: relevantCerts.map(cr => cr.certificationName)
         });
+
       }
 
       certReportData = reportData;
@@ -2741,31 +2944,47 @@
       showToast('Report generated successfully', 'success');
     }
 
-    function downloadCertReport(format) {
-      if (!certReportData || certReportData.length === 0) {
-        showToast('No data to download', 'error');
-        return;
-      }
+function downloadCertReport(format) {
+  if (!certReportData || certReportData.length === 0) {
+    showToast('No data to download', 'error');
+    return;
+  }
 
-      const maxCerts = Math.max(...certReportData.map(p => p.certifications.length), 1);
+  // Cari maksimum bilangan sijil untuk mana-mana participant
+  const maxCerts = Math.max(
+    ...certReportData.map(p => (p.certifications ? p.certifications.length : 0)),
+    1
+  );
 
-      const headers = ['IC Number', 'Name', 'Phone', 'Email', 'Company'];
-      for (let i = 1; i <= maxCerts; i++) {
-        headers.push(`Cert ${i}`);
-      }
+  // Tambah Company Code dalam header
+  const headers = ['IC Number', 'Name', 'Phone', 'Email', 'Company', 'Company Code'];
+  for (let i = 1; i <= maxCerts; i++) {
+    headers.push(`Cert ${i}`);
+  }
 
-      const rows = certReportData.map(p => {
-        const row = [p.ic, p.name, p.phone, p.email, p.company];
-        for (let i = 0; i < maxCerts; i++) {
-          row.push(p.certifications[i] || '-');
-        }
-        return row;
-      });
+  const rows = certReportData.map(p => {
+    // Masukkan company_code dalam row
+    const row = [
+      p.ic,
+      p.name,
+      p.phone,
+      p.email,
+      p.company,
+      p.company_code || '-'  // kalau kosong, letak '-'
+    ];
 
-      const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-      downloadCSV(csv, 'certification_report.csv');
-      showToast('Report downloaded', 'success');
+    for (let i = 0; i < maxCerts; i++) {
+      row.push(p.certifications && p.certifications[i] ? p.certifications[i] : '-');
     }
+    return row;
+  });
+
+  const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+  downloadCSV(csv, 'certification_report_v2.csv');
+  showToast('Report downloaded', 'success');
+}
+
+
 
     function generateRegisteredClassReport() {
       const allClasses = getClasses();
@@ -2830,86 +3049,238 @@
     }
 
     // Migration functions
-    async function importHistoricalData() {
-      const fileInput = document.getElementById('migrationFile');
-      const file = fileInput.files[0];
+async function importHistoricalData() {
+  const fileInput = document.getElementById('migrationFile');
+  const file = fileInput.files[0];
 
-      if (!file) {
-        showToast('Please select a file', 'error');
-        return;
+  if (!file) {
+    showToast('Please select a file', 'error');
+    return;
+  }
+
+  const resultsDiv = document.getElementById('migrationResults');
+  resultsDiv.classList.add('hidden');
+  resultsDiv.innerHTML = '';
+
+  showToast('Processing import... This may take a moment', 'info');
+
+  const reader = new FileReader();
+
+  reader.onload = async (e) => {
+    try {
+      let rows = [];
+      const fileName = file.name.toLowerCase();
+
+      if (fileName.endsWith('.csv')) {
+        // Guna helper CSV sama macam Bulk Assignment
+        const text = e.target.result;
+        rows = parseCsvToRows(text);
+      } else {
+        // Guna SheetJS untuk Excel
+        if (typeof XLSX === 'undefined') {
+          throw new Error('Excel parser (XLSX) not loaded');
+        }
+
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+
+        rows = XLSX.utils.sheet_to_json(worksheet, {
+          defval: ''
+        });
       }
 
-      showToast('Processing import... This may take a moment', 'info');
+      const certifications = getCertifications();
 
-      setTimeout(async () => {
-        const mockData = [
-          { ic: '900101-01-1234', name: 'Ali bin Abu', phone: '012-3456789', email: 'ali@email.com', company: 'ABC Sdn Bhd', company_code: '001', designation: 'Service Manager', certificationName: 'PTEST BASIC', dateAchieved: '2023-06-15' },
-          { ic: '900202-02-2345', name: 'Siti binti Ahmad', phone: '012-9876543', email: 'siti@email.com', company: 'XYZ Sdn Bhd', company_code: '12345', designation: 'Technician', certificationName: 'Fire Safety', dateAchieved: '2023-08-20' }
-        ];
+      let updated = 0;
+      let added = 0;
+      let skipped = 0;
+      let invalid = 0;
+      const invalidRowDetails = [];
+const designationMap = {
+        'service manager': 'Service Manager',
+        'service advisor': 'Service Advisor',
+        'technician': 'Technician',
+        'warranty admin': 'Warranty Admin',
+        'customer relations': 'Customer Relations',
+        'dealer principal': 'Dealer Principal',
+        'bp manager': 'BP Manager',
+        'insurance claim advisor': 'Insurance Claim Advisor',
+        'bp technician': 'BP Technician'
+      };
+      for (let idx = 0; idx < rows.length; idx++) {
+        const r = rows[idx];
+        const excelRowNumber = idx + 2; // row 1 = header
 
-        let updated = 0;
-        let added = 0;
-        let skipped = 0;
+        try {
+          const icRaw = (r['IC Number'] || '').toString().trim();
+          const name = (r['Name'] || '').toString().trim();
+          const phone = (r['Phone'] || '').toString().trim();
+          const email = (r['Email'] || '').toString().trim();
+          const company = (r['Company'] || '').toString().trim();
+          const companyCodeRaw = (r['Company Code'] || '').toString().trim();
+          const designationRaw = (r['Designation'] || '').toString().trim();
+          const certName = (r['Certification Name'] || '').toString().trim();
 
-        for (const row of mockData) {
-          let participant = getParticipantByIC(row.ic);
-          
-          if (!participant) {
+          const ic = normalizeIC(icRaw);
+          const companyCode = (companyCodeRaw || '').replace(/\D/g, '');
+           const designationKey = designationRaw.toLowerCase();
+          const canonicalDesignation = designationMap[designationKey];
+
+          // Skip row kosong betul-betul
+          if (!icRaw && !name && !company && !companyCodeRaw && !designationRaw && !certName) {
+            continue;
+          }
+
+          const addInvalid = (reason) => {
+            invalid++;
+            invalidRowDetails.push({
+              row: excelRowNumber,
+              ic: icRaw,
+              reason
+            });
+          };
+
+          // Required fields
+                    if (!ic || !name || !company || !companyCode || !designationRaw || !certName) {
+            addInvalid('Missing required fields (IC, Name, Company, Company Code, Designation, or Certification Name).');
+            continue;
+          }
+
+
+          if (!/^\d+$/.test(companyCode)) {
+            addInvalid('Invalid Company Code (must be digits only after cleaning).');
+            continue;
+          }
+                    if (!canonicalDesignation) {
+            addInvalid('Invalid designation (not in system list).');
+            continue;
+          }
+
+          // 🔎 Check certification exist in master list
+          const systemCert = certifications.find(c =>
+            (c.certificationName || '').toString().toLowerCase() === certName.toLowerCase()
+          );
+
+          if (!systemCert) {
+            addInvalid('Certification does not exist in system.');
+            continue;
+          }
+
+          // Participant: create or update
+          let participant = getParticipantByIC(ic);
+                    if (!participant) {
             participant = {
               id: generateId(),
               type: 'participant',
-              ic: row.ic,
-              name: row.name,
-              phone: row.phone,
-              email: row.email,
-              company: row.company,
-              company_code: row.company_code,
-              designation: row.designation || '',
+              ic: ic,
+              name: name,
+              phone: phone || '',
+              email: email || '',
+              company: company,
+              company_code: companyCode,
+              designation: canonicalDesignation,
               dateRegistered: new Date().toISOString()
             };
             await window.dataSdk.create(participant);
             added++;
           } else {
+            participant.name = name;
+            if (phone) participant.phone = phone;
+            if (email) participant.email = email;
+            participant.company = company;
+            participant.company_code = companyCode;
+            participant.designation = canonicalDesignation;
+            await window.dataSdk.update(participant);
             updated++;
           }
 
-          const existingCert = getCertificationRecords().find(cr => 
-            cr.ic === row.ic && 
-            cr.certificationName === row.certificationName &&
-            cr.dateAchieved === row.dateAchieved
+
+          // Certification record – avoid duplicates (IC + Certification Name)
+          const existingCert = getCertificationRecords().find(cr =>
+            normalizeIC(cr.ic) === ic &&
+            cr.certificationName === certName
           );
 
-          if (!existingCert) {
-            const certRecord = {
-              id: generateId(),
-              type: 'certificationRecord',
-              ic: row.ic,
-              certificationName: row.certificationName,
-              dateAchieved: row.dateAchieved
-            };
-            await window.dataSdk.create(certRecord);
-          } else {
+          if (existingCert) {
             skipped++;
+            continue;
           }
-        }
 
-        const resultsHTML = `
-          <div class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <p class="font-medium text-green-900 mb-2">Import Results:</p>
-            <ul class="text-sm text-green-800 space-y-1">
-              <li>✅ ${updated} participants updated</li>
-              <li>✅ ${added} new participants added</li>
-              <li>⏭️ ${skipped} duplicate records skipped</li>
-              <li>✅ 0 errors (all IC formats accepted)</li>
+                    const certRecord = {
+            id: generateId(),
+            type: 'certificationRecord',
+            ic: ic,
+            name: name,
+            company: company,
+            company_code: companyCode,
+            designation: canonicalDesignation,
+            certificationName: certName,
+            createdAt: new Date().toISOString()
+          };
+
+
+          await window.dataSdk.create(certRecord);
+        } catch (errRow) {
+          console.error(errRow);
+          invalid++;
+          invalidRowDetails.push({
+            row: excelRowNumber,
+            ic: (r['IC Number'] || '').toString().trim(),
+            reason: 'Unexpected error while processing this row.'
+          });
+        }
+      }
+
+      // Build result HTML + invalid row details
+      let detailsSection = '';
+      if (invalidRowDetails.length > 0) {
+        const items = invalidRowDetails.map(d => {
+          const icText = d.ic ? ` (IC: ${d.ic})` : '';
+          return `<li>Row ${d.row}${icText} – ${d.reason}</li>`;
+        }).join('');
+
+        detailsSection = `
+          <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p class="font-medium text-red-900 mb-2">Invalid row details:</p>
+            <ul class="text-xs text-red-800 space-y-1">
+              ${items}
             </ul>
           </div>
         `;
-        document.getElementById('migrationResults').innerHTML = resultsHTML;
-        document.getElementById('migrationResults').classList.remove('hidden');
-        
-        showToast('Import completed successfully', 'success');
-      }, 2000);
+      }
+
+      const resultsHTML = `
+        <div class="mt-4 p-4 bg-green-50 border-green-200 rounded-lg bg-green-50">
+          <p class="font-medium text-green-900 mb-2">Import Results:</p>
+          <ul class="text-sm text-green-800 space-y-1">
+            <li>✅ ${updated} participants updated</li>
+            <li>✅ ${added} new participants added</li>
+            <li>⏭️ ${skipped} duplicate certification records skipped</li>
+            <li>❌ ${invalid} invalid rows</li>
+          </ul>
+          ${detailsSection}
+        </div>
+      `;
+
+      resultsDiv.innerHTML = resultsHTML;
+      resultsDiv.classList.remove('hidden');
+      showToast('Import completed', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error while processing import', 'error');
     }
+  };
+
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith('.csv')) {
+    reader.readAsText(file);
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
+}
+
 
     // Utility functions
     function downloadCSV(csv, filename) {
