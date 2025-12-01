@@ -314,10 +314,42 @@
       </form>
      </div><!-- Administration Content (Hidden until password correct) -->
      <div id="adminContent" class="hidden"><!-- Sub-navigation for Administration -->
-      <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
-       <div class="flex flex-wrap gap-2"><button onclick="switchAdminTab('dashboard', event)" class="admin-tab-button active px-4 py-2 rounded-lg font-medium text-sm">📊 Dashboard</button> <button onclick="switchAdminTab('classes', event)" class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">📋 Class Management</button> <button onclick="switchAdminTab('reports', event)" class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">📊 Reports</button> <button onclick="switchAdminTab('maintenances', event)" class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">⚙️ Training Maintenances</button> <button onclick="switchAdminTab('migration', event)" class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">📥 Import History</button>
-       </div>
-      </div><!-- Dashboard Tab -->
+<div class="bg-white rounded-lg shadow-sm p-4 mb-6">
+  <div class="flex flex-wrap gap-2">
+    <button
+      onclick="switchAdminTab('dashboard', this)"
+      class="admin-tab-button active px-4 py-2 rounded-lg font-medium text-sm">
+      📊 Dashboard
+    </button>
+
+    <button
+      onclick="switchAdminTab('classes', this)"
+      class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">
+      📋 Class Management
+    </button>
+
+    <button
+      onclick="switchAdminTab('reports', this)"
+      class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">
+      📊 Reports
+    </button>
+
+    <button
+      onclick="switchAdminTab('maintenances', this)"
+      class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">
+      ⚙️ Training Maintenances
+    </button>
+
+    <button
+      onclick="switchAdminTab('importHistory', this)"
+      class="admin-tab-button px-4 py-2 rounded-lg font-medium text-sm bg-gray-100 text-gray-700">
+      📥 Import History
+    </button>
+  </div>
+</div>
+
+
+<!-- Dashboard Tab -->
       <div id="dashboardTab" class="tab-content">
        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <div class="stat-card p-6 rounded-xl">
@@ -496,53 +528,179 @@
        </div>
       </div><!-- Training Maintenances Tab -->
       <div id="maintenancesTab" class="tab-content hidden">
-       <div class="space-y-6"><!-- Trainers Section -->
-        <div class="card p-6">
-         <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
-          <h2 class="text-2xl font-bold text-gray-800">👨‍🏫 Trainer Management</h2><button onclick="showAddTrainerModal()" class="btn-primary px-4 py-2 text-white rounded-lg font-medium">+ Add Trainer</button>
-         </div>
-         <div id="trainersList" class="space-y-4"></div>
-        </div><!-- Courses Section -->
-        <div class="card p-6">
-         <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
-          <h2 class="text-2xl font-bold text-gray-800">     Course Management</h2><button onclick="showAddCourseModal()" class="btn-primary px-4 py-2 text-white rounded-lg font-medium">+ Add Course</button>
-         </div>
-         <div id="coursesList" class="space-y-4"></div>
-        </div><!-- Certifications Section -->
-        <div class="card p-6">
-         <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
-          <h2 class="text-2xl font-bold text-gray-800">🎓 Certification Management</h2><button onclick="showAddCertificationModal()" class="btn-primary px-4 py-2 text-white rounded-lg font-medium">+ Create Certification</button>
-         </div>
-         <div id="certificationsList" class="space-y-4"></div>
+      <div class="space-y-6">
+
+  <!-- 🧑‍💼 Participant Management Section -->
+  <div class="card p-6">
+    <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
+      <h2 class="text-2xl font-bold text-gray-800">🧑‍💼 Participant Management</h2>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div class="md:col-span-2">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Search Participant</label>
+        <input
+          type="text"
+          id="participantSearchInput"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+          placeholder="Search by IC, name, company, or company code"
+          oninput="searchParticipants()">
+      </div>
+      <div class="flex items-end">
+        <button
+          type="button"
+          onclick="searchParticipants()"
+          class="w-full btn-primary px-4 py-2 text-white rounded-lg font-medium">
+          🔍 Search
+        </button>
+      </div>
+    </div>
+
+    <!-- Result List -->
+    <div id="participantSearchResults" class="space-y-3">
+      <!-- Filled by JS -->
+    </div>
+
+    <!-- Bulk Upload Participant Master -->
+    <div class="mt-8 border-t pt-6">
+      <h3 class="text-lg font-semibold text-gray-800 mb-3">📥 Bulk Upload Participant Database</h3>
+      <p class="text-sm text-gray-600 mb-3">
+        Use this to upload your full participant master database (no class assignment).
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div>
+          <button
+            type="button"
+            onclick="downloadParticipantMasterTemplate()"
+            class="w-full px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">
+            📥 Download Master Template
+          </button>
         </div>
-       </div>
-      </div><!-- Migration Tab -->
-      <div id="migrationTab" class="tab-content hidden">
-       <div class="card p-6">
-        <h2 class="text-2xl font-bold text-gray-800 mb-4">📥 Import Historical Certification Data</h2>
-        <div class="space-y-4">
-         <div><label class="block text-sm font-medium text-gray-700 mb-2">Upload Excel file with old records</label> <input type="file" id="migrationFile" accept=".xlsx,.xls,.csv" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-         </div>
-         <div>
-  <button type="button"
-          onclick="downloadMigrationTemplate()"
-          class="w-full px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">
-    📥 Download Template
-  </button>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Upload Filled Template</label>
+          <input
+            type="file"
+            id="participantMasterFile"
+            accept=".xlsx,.xls,.csv"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onclick="processParticipantMasterUpload()"
+        class="w-full btn-primary px-4 py-2 text-white rounded-lg font-medium">
+        Upload &amp; Save Participant Database
+      </button>
+
+      <div id="participantMasterResults" class="hidden mt-4"></div>
+
+      <div class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+        <p class="font-medium mb-1">Template columns (in order):</p>
+        <ul class="list-disc ml-5 space-y-1">
+          <li>IC Number (any format – dash akan dibuang auto)</li>
+          <li>Full Name</li>
+          <li>Phone (optional)</li>
+          <li>Email (optional)</li>
+          <li>Company</li>
+          <li>Company Code (numbers only)</li>
+          <li>Designation (must match allowed list)</li>
+          <li>Status (optional: Active / Inactive, default Active)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 👨‍🏫 Trainer Management Section -->
+  <div class="card p-6">
+    <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
+      <h2 class="text-2xl font-bold text-gray-800">👨‍🏫 Trainer Management</h2>
+      <button onclick="showAddTrainerModal()" class="btn-primary px-4 py-2 text-white rounded-lg font-medium">+ Add Trainer</button>
+    </div>
+    <div id="trainersList" class="space-y-4"></div>
+  </div>
+
+  <!-- 📚 Course Management Section -->
+  <div class="card p-6">
+    <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
+      <h2 class="text-2xl font-bold text-gray-800">     Course Management</h2>
+      <button onclick="showAddCourseModal()" class="btn-primary px-4 py-2 text-white rounded-lg font-medium">+ Add Course</button>
+    </div>
+    <div id="coursesList" class="space-y-4"></div>
+  </div>
+
+  <!-- 🎓 Certification Management Section -->
+  <div class="card p-6">
+    <div class="flex flex-wrap gap-4 items-center justify-between mb-4">
+      <h2 class="text-2xl font-bold text-gray-800">🎓 Certification Management</h2>
+      <button onclick="showAddCertificationModal()" class="btn-primary px-4 py-2 text-white rounded-lg font-medium">+ Create Certification</button>
+    </div>
+    <div id="certificationsList" class="space-y-4"></div>
+  </div>
+
 </div>
 
-         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p class="font-medium text-blue-900 mb-2">Required columns:</p>
-          <ul class="text-sm text-blue-800 space-y-1 ml-4">
-           <li>• IC Number (any format accepted)</li>
-           <li>• Name</li>
-           <li>• Phone</li>
-           <li>• Email</li>
-           <li>• Company</li>
-           <li>• Certification Name</li>
-          </ul>
-         </div><button onclick="importHistoricalData()" class="btn-primary px-6 py-3 text-white rounded-lg font-medium w-full">Import Data</button>
-         <div id="migrationResults" class="hidden"></div>
+      <!-- Import History Tab -->
+      <div id="importHistoryTab" class="tab-content">
+        <div class="card p-6">
+          <h2 class="text-2xl font-bold text-gray-800 mb-4">
+            📥 Import Historical Certification Data
+          </h2>
+
+          <div class="space-y-4">
+            <!-- Upload file -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Upload Excel / CSV file with historical certification records
+              </label>
+              <input
+                type="file"
+                id="migrationFile"
+                accept=".xlsx,.xls,.csv"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+
+            <!-- Button download template -->
+            <div>
+              <button
+                type="button"
+                onclick="downloadMigrationTemplate()"
+                class="w-full px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">
+                📥 Download Template
+              </button>
+            </div>
+
+            <!-- Info required columns -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p class="font-medium text-blue-900 mb-2">Required columns:</p>
+              <ul class="text-sm text-blue-800 space-y-1 ml-4">
+                <li>• IC Number (any format accepted)</li>
+                <li>• Name</li>
+                <li>• Phone</li>
+                <li>• Email</li>
+                <li>• Company</li>
+                <li>• Company Code</li>
+                <li>• Designation</li>
+                <li>• Certification Name</li>
+              </ul>
+            </div>
+
+            <!-- Button import data -->
+            <button
+              type="button"
+              onclick="importHistoricalData()"
+              class="btn-primary px-4 py-2 text-white rounded-lg font-medium w-full">
+              Import Data
+            </button>
+
+            <div id="migrationResults" class="hidden"></div>
+          </div>
+        </div>
+      </div>
+
+
         </div>
        </div>
       </div>
@@ -652,18 +810,30 @@ function getParticipantByIC(ic) {
     }
 
     // UI Update functions
-    function updateUI() {
-      updateDashboard();
-      updateParticipantsList();
-      updateTrainersList();
-      updateCoursesList();
-      updateCertificationsList();
-      updateClassesList();
-      updateCertCheckboxList();
-      populateClassSelects();
-      populateCompletedClassesList();
-      populateRegistrationClassSelects();
-    }
+function updateUI() {
+  updateDashboard();
+  updateParticipantsList();
+  updateTrainersList();
+  updateCoursesList();
+  updateCertificationsList();
+  updateClassesList();
+  updateCertCheckboxList();
+  populateClassSelects();
+  populateCompletedClassesList();
+  populateRegistrationClassSelects();
+
+  // Participant Management – jangan auto list semua, biar user search dulu
+  const container = document.getElementById('participantSearchResults');
+  if (container) {
+    container.innerHTML = `
+      <p class="text-gray-500 text-sm py-4 text-center">
+        Enter IC, name, company or company code, then click Search.
+      </p>
+    `;
+  }
+}
+
+
 
     function updateDashboard() {
       const participants = getParticipants();
@@ -975,23 +1145,39 @@ function getParticipantByIC(ic) {
     }
 
     // Admin sub-tab switching
-    function switchAdminTab(tabName, event) {
-      currentAdminTab = tabName;
-      
-      // Update admin tab buttons
-      document.querySelectorAll('.admin-tab-button').forEach(btn => {
-        btn.classList.remove('active');
-        btn.classList.add('bg-gray-100', 'text-gray-700');
-      });
-      event.target.classList.add('active');
-      event.target.classList.remove('bg-gray-100', 'text-gray-700');
+function switchAdminTab(tabName, btn) {
+  currentAdminTab = tabName;
 
-      // Update admin tab content
-      document.querySelectorAll('#adminContent .tab-content').forEach(content => {
-        content.classList.add('hidden');
-      });
-      document.getElementById(tabName + 'Tab').classList.remove('hidden');
-    }
+  // Reset semua button admin
+  document.querySelectorAll('.admin-tab-button').forEach(b => {
+    b.classList.remove('active');
+    b.classList.add('bg-gray-100', 'text-gray-700');
+  });
+
+  // Set button yang dipilih
+  if (btn) {
+    btn.classList.add('active');
+    btn.classList.remove('bg-gray-100', 'text-gray-700');
+  }
+
+  // Sembunyikan semua tab admin
+  document.querySelectorAll('#adminContent .tab-content').forEach(content => {
+    content.classList.add('hidden');
+  });
+
+  // Tunjukkan tab yang diminta
+  const targetTabId = tabName + 'Tab';
+  const targetTab = document.getElementById(targetTabId);
+
+  if (!targetTab) {
+    console.error('[switchAdminTab] Tab not found:', targetTabId);
+    return;
+  }
+
+  targetTab.classList.remove('hidden');
+}
+
+
 
     // Registration functions
 // Registration functions
@@ -1389,7 +1575,336 @@ async function processBulkRegistration() {
 
 
 
-    // Participant functions
+      // Participant functions
+
+  function downloadParticipantMasterTemplate() {
+    const csv = [
+      ['IC Number', 'Full Name', 'Phone', 'Email', 'Company', 'Company Code', 'Designation', 'Status'],
+      ['', '', '', '', '', '', '', '']
+    ].map(row => row.join(',')).join('\n');
+
+    downloadCSV(csv, 'participant_master_template.csv');
+    showToast('Participant master template downloaded', 'success');
+  }
+
+  async function processParticipantMasterUpload() {
+    const fileInput = document.getElementById('participantMasterFile');
+    const file = fileInput.files[0];
+
+    if (!file) {
+      showToast('Please select a file to upload', 'error');
+      return;
+    }
+
+    const resultsDiv = document.getElementById('participantMasterResults');
+    if (resultsDiv) {
+      resultsDiv.classList.add('hidden');
+      resultsDiv.innerHTML = '';
+    }
+
+    const uploadBtn = document.querySelector('button[onclick="processParticipantMasterUpload()"]');
+    if (uploadBtn) {
+      uploadBtn.innerHTML = 'Processing...';
+      uploadBtn.disabled = true;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = async (e) => {
+      try {
+        let rows = [];
+        const fileName = file.name.toLowerCase();
+
+        if (fileName.endsWith('.csv')) {
+          const text = e.target.result;
+          rows = parseCsvToRows(text); // function ni kau dah ada sebelum ni
+        } else {
+          if (typeof XLSX === 'undefined') {
+            throw new Error('Excel parser (XLSX) not loaded. Please use CSV or add XLSX library.');
+          }
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+        }
+
+        const validDesignations = [
+          'Service Manager',
+          'Service Advisor',
+          'Technician',
+          'Warranty Admin',
+          'Customer Relations',
+          'Dealer Principal',
+          'BP Manager',
+          'Insurance Claim Advisor',
+          'BP Technician',
+          'CRE/CRA',
+          'Parts Controller',
+          'Job Controller'
+        ];
+
+        let created = 0;
+        let updated = 0;
+        let invalidRows = 0;
+        const invalidRowDetails = [];
+
+        for (let idx = 0; idx < rows.length; idx++) {
+          const r = rows[idx];
+          const excelRowNumber = idx + 2; // row 2 = data pertama
+
+          try {
+            const icRaw = (r['IC Number'] || '').toString().trim();
+            const name = (r['Full Name'] || '').toString().trim();
+            const phone = (r['Phone'] || '').toString().trim();
+            const email = (r['Email'] || '').toString().trim();
+            const company = (r['Company'] || '').toString().trim();
+            const companyCodeRaw = (r['Company Code'] || '').toString().trim();
+            const designationRaw = (r['Designation'] || '').toString().trim();
+            const statusRaw = (r['Status'] || '').toString().trim();
+
+            const ic = normalizeIC(icRaw);
+            const companyCode = (companyCodeRaw || '').replace(/\D/g, '');
+            const designation = designationRaw;
+
+            // Skip row kosong
+            if (!icRaw && !name && !company && !companyCodeRaw && !designationRaw) {
+              continue;
+            }
+
+            const addInvalid = (reason) => {
+              invalidRows++;
+              invalidRowDetails.push({
+                row: excelRowNumber,
+                ic: icRaw,
+                reason
+              });
+            };
+
+            // Check wajib isi
+            if (!ic || !name || !company || !companyCode || !designation) {
+              addInvalid('Missing required fields (IC, Name, Company, Company Code, or Designation).');
+              continue;
+            }
+
+            // Format IC mesti digit saja
+            if (!/^\d+$/.test(ic)) {
+              addInvalid('Invalid IC format after cleaning (must be digits only).');
+              continue;
+            }
+
+            // Company code mesti digit saja
+            if (!/^\d+$/.test(companyCode)) {
+              addInvalid('Invalid Company Code (must be digits only).');
+              continue;
+            }
+
+            // Designation mesti ikut list
+            if (!validDesignations.includes(designation)) {
+              addInvalid('Invalid designation (must match allowed list).');
+              continue;
+            }
+
+            let status = statusRaw || 'Active';
+            if (!['Active', 'Inactive'].includes(status)) {
+              status = 'Active';
+            }
+
+            // Check existing participant by IC
+            let participant = getParticipantByIC(ic);
+
+            if (!participant) {
+              participant = {
+                id: generateId(),
+                type: 'participant',
+                ic: ic,
+                name: name,
+                phone: phone || '',
+                email: email || '',
+                company: company,
+                company_code: companyCode,
+                designation: designation,
+                status: status,
+                dateRegistered: new Date().toISOString()
+              };
+              await window.dataSdk.create(participant);
+              created++;
+            } else {
+              participant.name = name;
+              if (phone) participant.phone = phone;
+              if (email) participant.email = email;
+              participant.company = company;
+              participant.company_code = companyCode;
+              participant.designation = designation;
+              participant.status = status || participant.status || 'Active';
+              await window.dataSdk.update(participant);
+              updated++;
+            }
+
+          } catch (errRow) {
+            invalidRows++;
+            invalidRowDetails.push({
+              row: excelRowNumber,
+              ic: (r['IC Number'] || '').toString().trim(),
+              reason: 'Unexpected error while processing this row.'
+            });
+          }
+        }
+
+        let detailsSection = '';
+        if (invalidRowDetails.length > 0) {
+          const items = invalidRowDetails.map(d => {
+            const icText = d.ic ? ` (IC: ${d.ic})` : '';
+            return `<li>Row ${d.row}${icText} – ${d.reason}</li>`;
+          }).join('');
+
+          detailsSection = `
+            <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p class="font-medium text-red-900 mb-2">Invalid row details:</p>
+              <ul class="text-xs text-red-800 space-y-1">
+                ${items}
+              </ul>
+            </div>
+          `;
+        }
+
+        if (resultsDiv) {
+          resultsDiv.innerHTML = `
+            <div class="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p class="font-medium text-green-900 mb-2">Participant master upload results:</p>
+              <ul class="text-sm text-green-800 space-y-1">
+                <li>✅ ${created} participants created</li>
+                <li>♻️ ${updated} participants updated</li>
+                <li>❌ ${invalidRows} invalid rows</li>
+              </ul>
+              ${detailsSection}
+            </div>
+          `;
+          resultsDiv.classList.remove('hidden');
+        }
+
+        showToast('Participant master upload completed', 'success');
+        // Refresh search list
+        renderParticipantSearchResults(getParticipants());
+
+      } catch (error) {
+        console.error(error);
+        showToast('Error while processing participant master upload', 'error');
+      } finally {
+        if (uploadBtn) {
+          uploadBtn.innerHTML = 'Upload &amp; Save Participant Database';
+          uploadBtn.disabled = false;
+        }
+      }
+    };
+
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.endsWith('.csv')) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
+  }
+
+  function renderParticipantSearchResults(participants) {
+    const container = document.getElementById('participantSearchResults');
+    if (!container) return;
+
+    if (!participants || participants.length === 0) {
+      container.innerHTML = `
+        <p class="text-gray-500 text-sm py-4 text-center">
+          No participants found.
+        </p>
+      `;
+      return;
+    }
+
+    const html = participants.map(p => {
+      const ic = normalizeIC(p.ic);
+      return `
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1">
+                <h3 class="text-lg font-bold text-gray-800">${p.name || '-'}</h3>
+                <span class="px-2 py-0.5 text-xs rounded-full ${
+                  p.status === 'Inactive'
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-green-100 text-green-700'
+                }">
+                  ${p.status === 'Inactive' ? 'Inactive' : 'Active'}
+                </span>
+              </div>
+              <p class="text-sm text-gray-600">IC: ${ic || '-'}</p>
+              <p class="text-sm text-gray-600">Company: ${p.company || '-'}</p>
+              <p class="text-sm text-gray-600">Company Code: ${p.company_code || '-'}</p>
+              <p class="text-sm text-gray-600">Designation: ${p.designation || '-'}</p>
+              <p class="text-sm text-gray-600 mt-1">
+                📞 ${p.phone || '-'} &nbsp; | &nbsp; 📧 ${p.email || '-'}
+              </p>
+            </div>
+            <div class="flex flex-col gap-2">
+              <button
+                type="button"
+                onclick="editParticipant('${ic}')"
+                class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                Edit
+              </button>
+              <button
+                type="button"
+                onclick="deleteParticipant('${ic}')"
+                class="text-red-600 hover:text-red-800 text-sm font-medium">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = html;
+  }
+
+function searchParticipants() {
+  const input = document.getElementById('participantSearchInput');
+  const container = document.getElementById('participantSearchResults');
+  if (!input || !container) return;
+
+  const termRaw = input.value || '';
+  const term = termRaw.toLowerCase().trim();
+  const termDigits = termRaw.replace(/\D/g, '');
+
+  // ❗Kalau user tak isi apa-apa → JANGAN list semua
+  if (!term && !termDigits) {
+    container.innerHTML = `
+      <p class="text-gray-500 text-sm py-4 text-center">
+        Please enter IC, name, company or company code to search.
+      </p>
+    `;
+    return;
+  }
+
+  const participants = getParticipants();
+
+  const filtered = participants.filter(p => {
+    const icNorm = normalizeIC(p.ic);
+    const name = (p.name || '').toLowerCase();
+    const company = (p.company || '').toLowerCase();
+    const companyCode = (p.company_code || '').toString().toLowerCase();
+
+    const matchIC = termDigits ? icNorm.includes(termDigits) : false;
+    const matchName = name.includes(term);
+    const matchCompany = company.includes(term);
+    const matchCode = companyCode.includes(term);
+
+    return matchIC || matchName || matchCompany || matchCode;
+  });
+
+  renderParticipantSearchResults(filtered);
+}
+
+
+
     function editParticipant(ic) {
       const participant = getParticipantByIC(ic);
       if (!participant) return;
@@ -3168,33 +3683,18 @@ const designationMap = {
             continue;
           }
 
-          // Participant: create or update
-          let participant = getParticipantByIC(ic);
-                    if (!participant) {
-            participant = {
-              id: generateId(),
-              type: 'participant',
-              ic: ic,
-              name: name,
-              phone: phone || '',
-              email: email || '',
-              company: company,
-              company_code: companyCode,
-              designation: canonicalDesignation,
-              dateRegistered: new Date().toISOString()
-            };
-            await window.dataSdk.create(participant);
-            added++;
-          } else {
-            participant.name = name;
-            if (phone) participant.phone = phone;
-            if (email) participant.email = email;
-            participant.company = company;
-            participant.company_code = companyCode;
-            participant.designation = canonicalDesignation;
-            await window.dataSdk.update(participant);
-            updated++;
+          // Participant: CHECK ONLY (tak update, tak create baru)
+          const participant = getParticipantByIC(ic);
+
+          if (!participant) {
+            // IC tak wujud dalam participant database → SKIP row ni
+            addInvalid('Participant not found in system (IC not in participant database). Row skipped – no new participant created.');
+            continue;
           }
+
+          // Kalau perlu statistik, updated = bilangan participant yang match dengan sistem
+          updated++;
+
 
 
           // Certification record – avoid duplicates (IC + Certification Name)
@@ -3251,18 +3751,19 @@ const designationMap = {
         `;
       }
 
-      const resultsHTML = `
-        <div class="mt-4 p-4 bg-green-50 border-green-200 rounded-lg bg-green-50">
-          <p class="font-medium text-green-900 mb-2">Import Results:</p>
-          <ul class="text-sm text-green-800 space-y-1">
-            <li>✅ ${updated} participants updated</li>
-            <li>✅ ${added} new participants added</li>
-            <li>⏭️ ${skipped} duplicate certification records skipped</li>
-            <li>❌ ${invalid} invalid rows</li>
-          </ul>
-          ${detailsSection}
-        </div>
-      `;
+const resultsHTML = `
+  <div class="mt-4 p-4 bg-green-50 border-green-200 rounded-lg bg-green-50">
+    <p class="font-medium text-green-900 mb-2">Import Results:</p>
+    <ul class="text-sm text-green-800 space-y-1">
+      <li>✅ ${updated} participants matched in system</li>
+      <li>✅ ${added} new certification records created</li>
+      <li>⏭️ ${skipped} duplicate certification records skipped</li>
+      <li>❌ ${invalid} invalid / not imported rows</li>
+    </ul>
+    ${detailsSection}
+  </div>
+`;
+
 
       resultsDiv.innerHTML = resultsHTML;
       resultsDiv.classList.remove('hidden');
@@ -3316,5 +3817,9 @@ const designationMap = {
 
     initApp();
   </script>
- <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9a25169df254cc5f',t:'MTc2Mzc3OTUwMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9a25169df254cc5f',t:'MTc2Mzc3OTUwMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
+ <?!= include('data_sdk_firebase'); ?>
+<?!= include('element_sdk'); ?>
+<?!= include('main_js'); ?>
+ </body>
 </html>
