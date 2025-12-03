@@ -1236,32 +1236,34 @@ async function registerSingleParticipant(event) {
   }
 
   try {
-    // Create / update participant
-    let participant = getParticipantByIC(ic);
-    if (!participant) {
-      participant = {
-        id: generateId(),
-        type: 'participant',
-        ic: ic, // digits only
-        name: name,
-        phone: phone,
-        email: email,
-        company: company,
-        company_code: companyCode,
-        designation: designation,
-        dateRegistered: new Date().toISOString()
-      };
-      await window.dataSdk.create(participant);
-    } else {
-      // Update info terkini
-      participant.name = name;
-      participant.phone = phone;
-      participant.email = email;
-      participant.company = company;
-      participant.company_code = companyCode;
-      participant.designation = designation;
-      await window.dataSdk.update(participant);
-    }
+// Create / update participant
+let participant = getParticipantByIC(ic);
+if (!participant) {
+  participant = {
+    id: generateId(),
+    type: 'participant',
+    ic: ic, // digits only
+    name: name,
+    phone: phone,
+    email: email,
+    company: company,
+    company_code: companyCode,
+    designation: designation,
+    status: 'Active', // 🔹 auto set Active untuk participant baru
+    dateRegistered: new Date().toISOString()
+  };
+  await window.dataSdk.create(participant);
+} else {
+  // Update info terkini
+  participant.name = name;
+  participant.phone = phone;
+  participant.email = email;
+  participant.company = company;
+  participant.company_code = companyCode;
+  participant.designation = designation;
+  await window.dataSdk.update(participant);
+}
+
 
     // Create attendance record
     const attendanceRecord = {
@@ -1479,32 +1481,34 @@ async function processBulkRegistration() {
             continue;
           }
 
-          // Create / update participant (IC normalized)
-          let participant = getParticipantByIC(ic);
-          if (!participant) {
-            participant = {
-              id: generateId(),
-              type: 'participant',
-              ic: ic, // digits only
-              name: name,
-              phone: phone || '',
-              email: email || '',
-              company: company,
-              company_code: companyCode,
-              designation: designation,
-              dateRegistered: new Date().toISOString()
-            };
-            await window.dataSdk.create(participant);
-          } else {
-            // Update info terkini – phone/email optional
-            participant.name = name;
-            if (phone) participant.phone = phone;
-            if (email) participant.email = email;
-            participant.company = company;
-            participant.company_code = companyCode;
-            participant.designation = designation;
-            await window.dataSdk.update(participant);
-          }
+// Create / update participant (IC normalized)
+let participant = getParticipantByIC(ic);
+if (!participant) {
+  participant = {
+    id: generateId(),
+    type: 'participant',
+    ic: ic, // digits only
+    name: name,
+    phone: phone || '',
+    email: email || '',
+    company: company,
+    company_code: companyCode,
+    designation: designation,
+    status: 'Active', // 🔹 auto set Active untuk participant baru hasil bulk pre-register
+    dateRegistered: new Date().toISOString()
+  };
+  await window.dataSdk.create(participant);
+} else {
+  // Update info terkini – phone/email optional
+  participant.name = name;
+  if (phone) participant.phone = phone;
+  if (email) participant.email = email;
+  participant.company = company;
+  participant.company_code = companyCode;
+  participant.designation = designation;
+  await window.dataSdk.update(participant);
+}
+
 
           // Create attendance record
           const attendanceRecord = {
