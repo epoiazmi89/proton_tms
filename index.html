@@ -694,7 +694,13 @@
               </ul>
             </div>
 
-
+            <!-- Button import data -->
+            <button
+              type="button"
+              onclick="importHistoricalData()"
+              class="btn-primary px-4 py-2 text-white rounded-lg font-medium w-full">
+              Import Data
+            </button>
 
             <div id="migrationResults" class="hidden"></div>
           </div>
@@ -3788,6 +3794,15 @@ function downloadCertReport(format) {
       showToast('Class summary report downloaded', 'success');
     }
 
+    // Migration functions
+async function importHistoricalData() {
+  const fileInput = document.getElementById('migrationFile');
+  const file = fileInput.files[0];
+
+  if (!file) {
+    showToast('Please select a file', 'error');
+    return;
+  }
 
   const resultsDiv = document.getElementById('migrationResults');
   resultsDiv.classList.add('hidden');
