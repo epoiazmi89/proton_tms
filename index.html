@@ -2003,8 +2003,27 @@ function searchParticipants() {
       const participant = getParticipantByIC(ic);
       if (!participant) return;
 
-      // Default kalau kosong → Active
+      // Status – default Active kalau kosong / undefined
       const currentStatus = participant.status === 'Inactive' ? 'Inactive' : 'Active';
+
+      // Senarai sijil & sijil sedia ada untuk participant
+      const certifications = getCertifications ? getCertifications() : [];
+      const certRecords = getCertificationRecords
+        ? getCertificationRecords().filter(r => r.ic === ic)
+        : [];
+
+      const existingCertNames = certRecords.map(r => r.certificationName).filter(Boolean);
+
+      const cert1Val = existingCertNames[0] || '';
+      const cert2Val = existingCertNames[1] || '';
+      const cert3Val = existingCertNames[2] || '';
+
+      const certOptionsHtml = [
+        '<option value="">-- No Selection --</option>',
+        ...certifications.map(c => 
+          `<option value="${c.certificationName}">${c.certificationName}</option>`
+        )
+      ].join('');
 
       const modal = `
         <div class="modal-backdrop fixed inset-0 flex items-center justify-center z-50 p-4">
@@ -2014,68 +2033,38 @@ function searchParticipants() {
               <form onsubmit="updateParticipant(event, '${ic}')" class="space-y-4">
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">IC Number</label>
-                  <input
-                    type="text"
-                    id="editParticipantIC"
-                    value="${participant.ic || ''}"
-                    required
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                  <input type="text" id="editParticipantIC" value="${participant.ic || ''}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                 </div>
 
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    id="editParticipantName"
-                    value="${participant.name || ''}"
-                    required
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                  <input type="text" id="editParticipantName" value="${participant.name || ''}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                 </div>
 
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input
-                    type="text"
-                    id="editParticipantPhone"
-                    value="${participant.phone || ''}"
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                </div>
-
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    id="editParticipantEmail"
-                    value="${participant.email || ''}"
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input type="text" id="editParticipantPhone" value="${participant.phone || ''}" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" id="editParticipantEmail" value="${participant.email || ''}" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                  </div>
                 </div>
 
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Company</label>
-                  <input
-                    type="text"
-                    id="editParticipantCompany"
-                    value="${participant.company || ''}"
-                    required
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                  <input type="text" id="editParticipantCompany" value="${participant.company || ''}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                 </div>
 
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Company Code</label>
-                  <input
-                    type="text"
-                    id="editParticipantCompanyCode"
-                    value="${participant.company_code || ''}"
-                    required
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                  <input type="text" id="editParticipantCompanyCode" value="${participant.company_code || ''}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                 </div>
 
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Designation/Position</label>
-                  <select
-                    id="editParticipantDesignation"
-                    required
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                  <select id="editParticipantDesignation" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                     <option value="">-- Select Designation --</option>
                     <option value="Service Manager" ${participant.designation === 'Service Manager' ? 'selected' : ''}>Service Manager</option>
                     <option value="Service Advisor" ${participant.designation === 'Service Advisor' ? 'selected' : ''}>Service Advisor</option>
@@ -2089,37 +2078,64 @@ function searchParticipants() {
                   </select>
                 </div>
 
-                <!-- 🔹 NEW: Status Active / Inactive -->
+                <!-- Status Active / Inactive -->
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select
-                    id="editParticipantStatus"
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                  <select id="editParticipantStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                     <option value="Active" ${currentStatus === 'Active' ? 'selected' : ''}>Active</option>
                     <option value="Inactive" ${currentStatus === 'Inactive' ? 'selected' : ''}>Inactive</option>
                   </select>
                 </div>
 
+                <!-- Manual Certifications (max 3) -->
+                <div class="mt-4 border-t pt-4">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Manual Certifications (optional, max 3)
+                  </label>
+                  <p class="text-xs text-gray-500 mb-2">
+                    Apa yang dipilih di sini akan terus wujud sebagai sijil participant (sama taraf dengan auto-award).
+                  </p>
+                  <div class="space-y-2">
+                    <select id="editParticipantCert1" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                      ${certOptionsHtml}
+                    </select>
+                    <select id="editParticipantCert2" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                      ${certOptionsHtml}
+                    </select>
+                    <select id="editParticipantCert3" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                      ${certOptionsHtml}
+                    </select>
+                  </div>
+                </div>
+
                 <div class="flex gap-2 pt-4">
-                  <button
-                    type="submit"
-                    class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">
-                    Save Changes
-                  </button>
-                  <button
-                    type="button"
-                    onclick="closeModal()"
-                    class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">
-                    Cancel
-                  </button>
+                  <button type="submit" class="flex-1 btn-primary px-4 py-2 text-white rounded-lg font-medium">Save Changes</button>
+                  <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
                 </div>
               </form>
             </div>
           </div>
         </div>
       `;
+
       document.getElementById('modalContainer').innerHTML = modal;
+
+      // Pre-select existing certificates (kalau ada)
+      try {
+        if (cert1Val && document.getElementById('editParticipantCert1')) {
+          document.getElementById('editParticipantCert1').value = cert1Val;
+        }
+        if (cert2Val && document.getElementById('editParticipantCert2')) {
+          document.getElementById('editParticipantCert2').value = cert2Val;
+        }
+        if (cert3Val && document.getElementById('editParticipantCert3')) {
+          document.getElementById('editParticipantCert3').value = cert3Val;
+        }
+      } catch (e) {
+        console.error('Error pre-selecting certs in editParticipant:', e);
+      }
     }
+
 
     async function updateParticipant(event, oldIC) {
       event.preventDefault();
@@ -2131,6 +2147,7 @@ function searchParticipants() {
         return;
       }
 
+      // Update basic info
       participant.ic = newIC;
       participant.name = document.getElementById('editParticipantName').value;
       participant.phone = document.getElementById('editParticipantPhone').value;
@@ -2139,18 +2156,70 @@ function searchParticipants() {
       participant.company_code = document.getElementById('editParticipantCompanyCode').value;
       participant.designation = document.getElementById('editParticipantDesignation').value;
 
-      // 🔹 NEW: simpan status
+      // Status – kalau tak pilih, default Active
       const statusEl = document.getElementById('editParticipantStatus');
-      participant.status = statusEl && statusEl.value ? statusEl.value : 'Active';
+      if (statusEl) {
+        participant.status = statusEl.value === 'Inactive' ? 'Inactive' : 'Active';
+      } else {
+        participant.status = participant.status === 'Inactive' ? 'Inactive' : 'Active';
+      }
 
       const result = await window.dataSdk.update(participant);
 
+      // Kalau IC berubah → update semua related records
       if (result.isOk && oldIC !== newIC) {
         const relatedRecords = allData.filter(d => d.ic === oldIC && d.type !== 'participant');
         for (const record of relatedRecords) {
           record.ic = newIC;
           await window.dataSdk.update(record);
         }
+      }
+
+      // 🎓 Manual Certifications (max 3)
+      try {
+        const cert1 = document.getElementById('editParticipantCert1')?.value || '';
+        const cert2 = document.getElementById('editParticipantCert2')?.value || '';
+        const cert3 = document.getElementById('editParticipantCert3')?.value || '';
+
+        // hanya yang tak kosong + unique
+        const selectedCerts = [cert1, cert2, cert3]
+          .filter(v => v && v.trim())
+          .filter((v, idx, arr) => arr.indexOf(v) === idx);
+
+        if (selectedCerts.length > 0 && typeof getCertificationRecords === 'function') {
+          const allCertRecords = getCertificationRecords();
+          const currentIC = newIC;
+
+          const allCerts = typeof getCertifications === 'function' ? getCertifications() : [];
+
+          for (const certName of selectedCerts) {
+            const alreadyExists = allCertRecords.some(r =>
+              r.ic === currentIC && r.certificationName === certName
+            );
+
+            if (!alreadyExists) {
+              const certMeta = allCerts.find(c => c.certificationName === certName);
+
+              const newRecord = {
+                id: generateId(),
+                type: 'certificationRecord',
+                ic: currentIC,
+                participantName: participant.name,
+                company: participant.company,
+                companyCode: participant.company_code,
+                designation: participant.designation,
+                certificationCode: certMeta ? certMeta.certificationCode : '',
+                certificationName: certName,
+                dateCompleted: new Date().toISOString().split('T')[0],
+                awardedBy: 'Manual Edit'
+              };
+
+              await window.dataSdk.create(newRecord);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error while updating manual certifications in updateParticipant:', e);
       }
 
       if (result.isOk) {
