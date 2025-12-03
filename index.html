@@ -2175,52 +2175,51 @@ function searchParticipants() {
         }
       }
 
-      // 🎓 Manual Certifications (max 3)
-      try {
-        const cert1 = document.getElementById('editParticipantCert1')?.value || '';
-        const cert2 = document.getElementById('editParticipantCert2')?.value || '';
-        const cert3 = document.getElementById('editParticipantCert3')?.value || '';
+      // 2. MANUAL CERTIFICATIONS (max 3)
 
-        // hanya yang tak kosong + unique
-        const selectedCerts = [cert1, cert2, cert3]
-          .filter(v => v && v.trim())
-          .filter((v, idx, arr) => arr.indexOf(v) === idx);
+      const cert1 = (document.getElementById('editParticipantCert1')?.value || '').trim();
+      const cert2 = (document.getElementById('editParticipantCert2')?.value || '').trim();
+      const cert3 = (document.getElementById('editParticipantCert3')?.value || '').trim();
 
-        if (selectedCerts.length > 0 && typeof getCertificationRecords === 'function') {
-          const allCertRecords = getCertificationRecords();
-          const currentIC = newIC;
+      const selectedCerts = Array.from(new Set(
+        [cert1, cert2, cert3].filter(v => v !== '')
+      ));
 
-          const allCerts = typeof getCertifications === 'function' ? getCertifications() : [];
+      const currentIC = newIC;
 
-          for (const certName of selectedCerts) {
-            const alreadyExists = allCertRecords.some(r =>
-              r.ic === currentIC && r.certificationName === certName
-            );
+      // Semua cert record sedia ada untuk IC ni
+      const existingRecords = (window.allData || allData || [])
+        .filter(r => r.type === 'certificationRecord' && r.ic === currentIC);
 
-            if (!alreadyExists) {
-              const certMeta = allCerts.find(c => c.certificationName === certName);
-
-              const newRecord = {
-                id: generateId(),
-                type: 'certificationRecord',
-                ic: currentIC,
-                participantName: participant.name,
-                company: participant.company,
-                companyCode: participant.company_code,
-                designation: participant.designation,
-                certificationCode: certMeta ? certMeta.certificationCode : '',
-                certificationName: certName,
-                dateCompleted: new Date().toISOString().split('T')[0],
-                awardedBy: 'Manual Edit'
-              };
-
-              await window.dataSdk.create(newRecord);
-            }
-          }
+      // 2a. DELETE cert yg dah tak dipilih
+      for (const rec of existingRecords) {
+        if (!selectedCerts.includes(rec.certificationName)) {
+          try { await window.dataSdk.delete(rec); }
+          catch (err) { console.error('Delete cert error:', err, rec); }
         }
-      } catch (e) {
-        console.error('Error while updating manual certifications in updateParticipant:', e);
       }
+
+      // 2b. CREATE cert yg baru dipilih
+      for (const certName of selectedCerts) {
+        const exists = existingRecords.some(r =>
+          r.certificationName === certName
+        );
+
+        if (!exists) {
+          const newRecord = {
+            id: generateId(),
+            type: 'certificationRecord',
+            ic: currentIC,
+            certificationName: certName,
+            dateCompleted: new Date().toISOString(),
+            awardedBy: 'Manual Edit'
+          };
+
+          try { await window.dataSdk.create(newRecord); }
+          catch (err) { console.error('Create cert error:', err, newRecord); }
+        }
+      }
+
 
       if (result.isOk) {
         showToast('Participant updated successfully', 'success');
