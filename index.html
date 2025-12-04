@@ -1702,6 +1702,13 @@ async function processParticipantMasterUpload() {
       // 👇 NEW: track siapa jadi Inactive & IC yang ada dalam file upload
       let inactivated = 0;
       const uploadedICKeys = new Set();
+     
+           // Elak IC duplicate dalam fail upload yang sama
+      const seenICInFile = new Set();
+
+      const invalidRows = [];
+      const invalidDetails = [];
+
 
       const invalidRows = [];
       const invalidDetails = [];
@@ -1735,10 +1742,19 @@ async function processParticipantMasterUpload() {
         const status = 'Active';
 
         const keyIC = normalizeIC(ic);
+
+        // 🔁 NEW: elak IC duplicate dalam fail upload yang sama
+        if (seenICInFile.has(keyIC)) {
+          addInvalid(excelRowNumber, 'Duplicate IC dalam fail (IC sama dah muncul di row sebelum, hanya rekod pertama digunakan).');
+          continue;
+        }
+        seenICInFile.add(keyIC);
+
         let participant = existingByIC[keyIC];
 
         // Rekodkan IC ini sebagai "ada dalam file"
         uploadedICKeys.add(keyIC);
+
 
 
         // Create / update participant
