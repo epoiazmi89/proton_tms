@@ -1699,6 +1699,10 @@ async function processParticipantMasterUpload() {
       let updated = 0;
       let certCreated = 0;
 
+      // 👇 NEW: track siapa jadi Inactive & IC yang ada dalam file upload
+      let inactivated = 0;
+      const uploadedICKeys = new Set();
+
       const invalidRows = [];
       const invalidDetails = [];
 
@@ -1725,40 +1729,17 @@ async function processParticipantMasterUpload() {
         const statusRaw = (r['Status'] || '').toString().trim();
         const certNameRaw = (r['Certification Name'] || '').toString().trim();
 
-        // Validation asas
-        if (!ic) {
-          addInvalid(excelRowNumber, 'IC Number is empty.');
-          continue;
-        }
+        // ...
 
-        if (!name || !company || !companyCodeRaw || !designation) {
-          addInvalid(excelRowNumber, 'Missing required field(s).');
-          continue;
-        }
-
-        if (!/^\d+$/.test(ic)) {
-          addInvalid(excelRowNumber, 'IC Number must be numbers only after cleaning.');
-          continue;
-        }
-
-        if (!/^\d+$/.test(companyCodeRaw)) {
-          addInvalid(excelRowNumber, 'Company Code must be numbers only.');
-          continue;
-        }
-
-        if (!validDesignations.includes(designation)) {
-          addInvalid(excelRowNumber, 'Designation is not in allowed list.');
-          continue;
-        }
-
-        const status = statusRaw === '' ? 'Active' : statusRaw;
-        if (!['Active', 'Inactive'].includes(status)) {
-          addInvalid(excelRowNumber, 'Status must be Active or Inactive.');
-          continue;
-        }
+        // Semua participant yang ada dalam file upload ini dikira ACTIVE
+        const status = 'Active';
 
         const keyIC = normalizeIC(ic);
         let participant = existingByIC[keyIC];
+
+        // Rekodkan IC ini sebagai "ada dalam file"
+        uploadedICKeys.add(keyIC);
+
 
         // Create / update participant
         if (!participant) {
@@ -1854,6 +1835,31 @@ async function processParticipantMasterUpload() {
         // ====== HABIS PART SIJIL ======
       }
 
+      // 🔁 Set semua participant yang TIDAK ada dalam fail sebagai Inactive
+      for (const [key, p] of Object.entries(existingByIC)) {
+        if (!uploadedICKeys.has(key)) {
+          if (p.status !== 'Inactive') {
+            p.status = 'Inactive';
+            p.updatedAt = new Date().toISOString();
+            try {
+              const resInactive = await window.dataSdk.update(p);
+              if (resInactive.isOk) {
+                inactivated++;
+              } else {
+                console.error('Failed to set participant inactive from master upload', resInactive.error, p);
+              }
+            } catch (err) {
+              console.error('Error while setting participant inactive from master upload', err, p);
+            }
+          }
+        }
+      }
+
+      // Build result message
+      let html = `
+        <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-3">
+
+
       // Build result message
       let html = `
         <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-3">
@@ -1861,8 +1867,10 @@ async function processParticipantMasterUpload() {
           <ul class="text-sm text-green-800 list-disc ml-5 space-y-1">
             <li>New participants created: ${created}</li>
             <li>Existing participants updated: ${updated}</li>
+            <li>Participants set to Inactive (not in file): ${inactivated}</li>
             <li>Certification records created: ${certCreated}</li>
           </ul>
+
         </div>
       `;
 
