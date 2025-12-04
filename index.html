@@ -1753,60 +1753,63 @@ async function processParticipantMasterUpload() {
 
 
 
-        // Create / update participant
-        if (!participant) {
-          if (currentCount + created >= maxTotal) {
-            addInvalid(excelRowNumber, 'Maximum 999 participants reached. This row skipped.');
-            continue;
-          }
+// Create / update participant
+if (!participant) {
+  if (currentCount + created >= maxTotal) {
+    addInvalid(excelRowNumber, 'Maximum 999 participants reached. This row skipped.');
+    continue;
+  }
 
-          participant = {
-            id: generateId(),
-            type: 'participant',
-            ic: ic,
-            name,
-            phone,
-            email,
-            company,
-            companyCode: companyCodeRaw,
-            designation,
-            status,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
+  participant = {
+    id: generateId(),
+    type: 'participant',
+    ic: ic,
+    name,
+    phone,
+    email,
+    company,
+    // 🔹 Standardize: guna company_code (underscore) sama macam tempat lain
+    company_code: companyCodeRaw,
+    designation,
+    status,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
 
-          const res = await window.dataSdk.create(participant);
-          if (!res.isOk) {
-            console.error('Failed to create participant', res.error);
-            addInvalid(excelRowNumber, 'Failed to create participant.');
-            continue;
-          }
+  const res = await window.dataSdk.create(participant);
+  if (!res.isOk) {
+    console.error('Failed to create participant', res.error);
+    addInvalid(excelRowNumber, 'Failed to create participant.');
+    continue;
+  }
 
-          created++;
-          existingByIC[keyIC] = participant;
-        } else {
-          participant = {
-            ...participant,
-            ic,
-            name,
-            phone,
-            email,
-            company,
-            companyCode: companyCodeRaw,
-            designation,
-            status,
-            updatedAt: new Date().toISOString()
-          };
+  created++;
+  existingByIC[keyIC] = participant;
+} else {
+  participant = {
+    ...participant,
+    ic,
+    name,
+    phone,
+    email,
+    company,
+    // 🔹 Sama juga masa update
+    company_code: companyCodeRaw,
+    designation,
+    status,
+    updatedAt: new Date().toISOString()
+  };
 
-          const res = await window.dataSdk.update(participant);
-          if (!res.isOk) {
-            console.error('Failed to update participant', res.error);
-            addInvalid(excelRowNumber, 'Failed to update participant.');
-            continue;
-          }
+  const res = await window.dataSdk.update(participant);
+  if (!res.isOk) {
+    console.error('Failed to update participant', res.error);
+    addInvalid(excelRowNumber, 'Failed to update participant.');
+    continue;
+  }
 
-          updated++;
-        }
+  updated++;
+}
+
 
         // ====== PART SIJIL: create certificationRecord kalau Certification Name valid ======
         if (certNameRaw) {
