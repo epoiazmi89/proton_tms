@@ -2150,7 +2150,10 @@ function searchParticipants() {
     async function updateParticipant(event, oldIC) {
       event.preventDefault();
 
-      const newIC = document.getElementById('editParticipantIC').value;
+      // IC baru – normalize supaya backend sentiasa simpan digits only
+      const newICRaw = document.getElementById('editParticipantIC').value;
+      const newIC = normalizeIC(newICRaw);
+
       const participant = getParticipantByIC(oldIC);
       if (!participant) {
         showToast('Participant not found', 'error');
@@ -2176,9 +2179,12 @@ function searchParticipants() {
 
       const result = await window.dataSdk.update(participant);
 
-      // Kalau IC berubah → update semua related records
-      if (result.isOk && oldIC !== newIC) {
-        const relatedRecords = allData.filter(d => d.ic === oldIC && d.type !== 'participant');
+      // Kalau IC berubah → update semua related records (attendance, cert, dll)
+      if (result.isOk && normalizeIC(oldIC) !== newIC) {
+        const oldICKey = normalizeIC(oldIC);
+        const relatedRecords = allData.filter(d =>
+          d.type !== 'participant' && normalizeIC(d.ic || '') === oldICKey
+        );
         for (const record of relatedRecords) {
           record.ic = newIC;
           await window.dataSdk.update(record);
@@ -2199,7 +2205,7 @@ function searchParticipants() {
 
       // Semua cert record sedia ada untuk IC ni
       const existingRecords = (window.allData || allData || [])
-        .filter(r => r.type === 'certificationRecord' && r.ic === currentIC);
+        .filter(r => r.type === 'certificationRecord' && normalizeIC(r.ic || '') === currentIC);
 
       // 2a. DELETE cert yg dah tak dipilih
       for (const rec of existingRecords) {
@@ -2230,7 +2236,6 @@ function searchParticipants() {
         }
       }
 
-
       if (result.isOk) {
         showToast('Participant updated successfully', 'success');
         closeModal();
@@ -2238,6 +2243,7 @@ function searchParticipants() {
         showToast('Failed to update participant', 'error');
       }
     }
+
 
     async function deleteParticipant(ic) {
       const participant = getParticipantByIC(ic);
