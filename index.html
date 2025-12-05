@@ -2285,33 +2285,93 @@ function searchParticipants() {
 
 function downloadParticipants() {
   const participants = getParticipants();
-      
+
   if (participants.length === 0) {
     showToast('No participants to download', 'error');
     return;
   }
 
-  // Header CSV
-  const header = ['IC Number', 'Full Name', 'Phone', 'Email', 'Company', 'Company Code', 'Designation', 'Date Registered'];
+  // Ambil semua certificationRecord (kalau function ada)
+  const certRecords = typeof getCertificationRecords === 'function'
+    ? getCertificationRecords()
+    : [];
 
-  // Row data
-  const rows = participants.map(p => [
-    p.ic,
-    p.name,
-    p.phone,
-    p.email,
-    p.company,
-    p.company_code || '-',
-    p.designation || '-',
-    p.dateRegistered ? new Date(p.dateRegistered).toLocaleDateString() : ''
-  ]);
+  // Header CSV – tambah Status + Date Registered + 3 sijil
+  const header = [
+    'IC Number',
+    'Full Name',
+    'Phone',
+    'Email',
+    'Company',
+    'Company Code',
+    'Designation',
+    'Status',
+    'Date Registered',
+    'Certification 1',
+    'Certification 2',
+    'Certification 3'
+  ];
 
-  // Gabung header + rows
+  const rows = participants.map(p => {
+    const ic = p.ic || '';
+
+    // Status – kalau kosong, assume Active
+    const status = p.status || 'Active';
+
+    // Date Registered:
+    // 1) guna dateRegistered kalau ada
+    // 2) kalau tak ada, cuba createdAt
+    let dateRaw = p.dateRegistered || p.createdAt || '';
+    let dateFormatted = '';
+    if (dateRaw) {
+      try {
+        const d = new Date(dateRaw);
+        if (!isNaN(d)) {
+          dateFormatted = d.toLocaleDateString();
+        } else {
+          dateFormatted = dateRaw;
+        }
+      } catch (e) {
+        dateFormatted = dateRaw;
+      }
+    }
+
+    // Sijil: cari semua cert untuk IC ni
+    const certNames = certRecords
+      .filter(r => r.ic === ic)
+      .map(r => r.certificationName)
+      .filter(Boolean);
+
+    // Buang duplicate
+    const uniqueCerts = certNames.filter(
+      (name, idx, arr) => arr.indexOf(name) === idx
+    );
+
+    const cert1 = uniqueCerts[0] || '';
+    const cert2 = uniqueCerts[1] || '';
+    const cert3 = uniqueCerts[2] || '';
+
+    return [
+      ic,
+      p.name || '',
+      p.phone || '',
+      p.email || '',
+      p.company || '',
+      p.company_code || p.companyCode || '',
+      p.designation || '',
+      status,
+      dateFormatted,
+      cert1,
+      cert2,
+      cert3
+    ];
+  });
+
   const csv = [header, ...rows].map(row => row.join(',')).join('\n');
 
   downloadCSV(csv, 'participants.csv');
-  showToast('Participants downloaded successfully', 'success');
 }
+
 
 
     // Trainer functions
