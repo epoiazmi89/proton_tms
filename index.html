@@ -477,23 +477,60 @@
           <p class="text-sm text-blue-800">Total Participants: <span id="totalParticipantsCount" class="font-bold">0</span></p>
          </div><button onclick="downloadParticipants()" class="btn-primary px-6 py-3 text-white rounded-lg hover:bg-purple-700 font-medium w-full">📥 Download Participant Database</button>
         </div><!-- Attendance Report -->
-        <div class="card p-6">
-         <h2 class="text-2xl font-bold text-gray-800 mb-4">Attendance Report (Completed Classes)</h2>
-         <div class="space-y-4">
-          <div><label class="block text-sm font-medium text-gray-700 mb-2">Filter by Date Range</label>
-           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><label class="block text-xs text-gray-600 mb-1">From Date</label> <input type="date" id="reportFromDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div><label class="block text-xs text-gray-600 mb-1">To Date</label> <input type="date" id="reportToDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-           </div>
-          </div>
-          <div><label class="block text-sm font-medium text-gray-700 mb-2">Or Select Specific Classes (Multiple Selection)</label>
-           <div class="border border-gray-300 rounded-lg p-4 max-h-64 overflow-y-auto space-y-2" id="completedClassesList">
-            <p class="text-gray-500 text-sm">No completed classes available</p>
-           </div>
-          </div><button onclick="generateAttendanceReport()" class="btn-primary px-6 py-3 text-white rounded-lg font-medium w-full">Generate Attendance Report</button>
-         </div>
+<div class="card p-6">
+  <h2 class="text-2xl font-bold text-gray-800 mb-4">
+    Attendance Report (Completed Classes)
+  </h2>
+
+  <div class="space-y-4">
+    <!-- Filter controls -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">
+          Year
+        </label>
+        <select
+          id="completedYearFilter"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+        >
+          <option value="All">All Years</option>
+        </select>
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="block text-sm font-medium text-gray-700 mb-2">
+          Search Class / Course / Trainer
+        </label>
+        <input
+          type="text"
+          id="completedClassSearch"
+          placeholder="Type class name, course, or trainer"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+        >
+      </div>
+    </div>
+
+    <!-- Completed Classes List -->
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-2">
+        Select Completed Classes (Multiple Selection)
+      </label>
+      <div
+        id="completedClassesList"
+        class="border border-gray-300 rounded-lg p-4 max-h-64 overflow-y-auto space-y-2"
+      >
+        <p class="text-gray-500 text-sm">No completed classes available</p>
+      </div>
+    </div>
+
+    <!-- Generate button -->
+    <button
+      onclick="generateAttendanceReport()"
+      class="btn-primary px-6 py-3 text-white rounded-lg font-medium w-full"
+    >
+      Generate Attendance Report
+    </button>
+  </div>
         </div><!-- Certification Registration Report -->
         <div class="card p-6">
          <h2 class="text-2xl font-bold text-gray-800 mb-4">Certification Registration Report</h2>
@@ -1081,22 +1118,134 @@ function updateUI() {
       }
     }
 
-    function populateCompletedClassesList() {
-      const completedClasses = getClasses().filter(c => c.classStatus === 'Completed');
-      const courses = getCourses();
+// Cache & state untuk Completed Classes filter
+let completedClassesCache = [];
+let completedClassesFiltersInitialized = false;
 
-      const html = completedClasses.length > 0 ? completedClasses.map(cls => {
-        const course = courses.find(c => c.courseCode === cls.courseCode);
-        return `
-          <label class="flex items-center gap-2 p-2 hover:bg-gray-50 rounded">
-            <input type="checkbox" class="completed-class-checkbox w-4 h-4" value="${cls.id}">
-            <span class="text-sm">${cls.className} - ${course ? course.courseName : cls.courseCode} (${new Date(cls.classStartDate).toLocaleDateString()})</span>
-          </label>
-        `;
-      }).join('') : '<p class="text-gray-500 text-sm">No completed classes available</p>';
+function populateCompletedClassesList() {
+  // Ambil semua kelas Completed & sort ikut tarikh (latest dulu)
+  const allCompleted = getClasses().filter(c => c.classStatus === 'Completed');
+  const sorted = allCompleted.slice().sort((a, b) => {
+    const da = a.classStartDate ? new Date(a.classStartDate) : 0;
+    const db = b.classStartDate ? new Date(b.classStartDate) : 0;
+    return db - da;
+  });
 
-      document.getElementById('completedClassesList').innerHTML = html;
+  completedClassesCache = sorted;
+
+  const yearSelect = document.getElementById('completedYearFilter');
+  const searchInput = document.getElementById('completedClassSearch');
+
+  // Init dropdown Year & event listener sekali sahaja
+  if (yearSelect && !completedClassesFiltersInitialized) {
+    const yearSet = new Set();
+    sorted.forEach(c => {
+      if (c.classStartDate) {
+        yearSet.add(new Date(c.classStartDate).getFullYear());
+      }
+    });
+
+    const yearOptions = Array.from(yearSet)
+      .sort((a, b) => b - a)
+      .map(y => `<option value="${y}">${y}</option>`)
+      .join('');
+
+    yearSelect.innerHTML = `<option value="All">All Years</option>${yearOptions}`;
+    completedClassesFiltersInitialized = true;
+
+    yearSelect.addEventListener('change', renderCompletedClassesList);
+    if (searchInput) {
+      searchInput.addEventListener('input', renderCompletedClassesList);
     }
+  }
+
+  // Render list pertama kali
+  renderCompletedClassesList();
+}
+
+function renderCompletedClassesList() {
+  const container = document.getElementById('completedClassesList');
+  if (!container) return;
+
+  const yearSelect = document.getElementById('completedYearFilter');
+  const searchInput = document.getElementById('completedClassSearch');
+
+  let filtered = completedClassesCache.slice();
+
+  // Filter ikut Year
+  if (yearSelect && yearSelect.value && yearSelect.value !== 'All') {
+    filtered = filtered.filter(c => {
+      if (!c.classStartDate) return false;
+      return (
+        new Date(c.classStartDate)
+          .getFullYear()
+          .toString() === yearSelect.value
+      );
+    });
+  }
+
+  // Filter ikut Search (class name / course / trainer)
+  const q = searchInput ? searchInput.value.trim().toLowerCase() : '';
+  if (q) {
+    const courses = getCourses();
+    const trainers = typeof getTrainers === 'function' ? getTrainers() : [];
+
+    filtered = filtered.filter(c => {
+      const course = courses.find(co => co.courseCode === c.courseCode);
+      const trainer = trainers.find(t => t.id === c.trainerId);
+      const trainerName = trainer ? (trainer.name || '') : '';
+      const courseName = course ? (course.courseName || '') : '';
+
+      return (
+        (c.className || '').toLowerCase().includes(q) ||
+        (c.courseCode || '').toLowerCase().includes(q) ||
+        courseName.toLowerCase().includes(q) ||
+        trainerName.toLowerCase().includes(q)
+      );
+    });
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML =
+      '<p class="text-gray-500 text-sm">No completed classes found for selected filter.</p>';
+    return;
+  }
+
+  const courses = getCourses();
+  const trainers = typeof getTrainers === 'function' ? getTrainers() : [];
+
+  const html = filtered
+    .map(cls => {
+      const course = courses.find(c => c.courseCode === cls.courseCode);
+      const trainer = trainers.find(t => t.id === cls.trainerId);
+      const trainerName = trainer ? (trainer.name || '') : '';
+      const start = cls.classStartDate
+        ? new Date(cls.classStartDate).toLocaleDateString()
+        : '';
+      const end = cls.classEndDate
+        ? new Date(cls.classEndDate).toLocaleDateString()
+        : '';
+
+      return `
+        <label class="flex items-center gap-2 p-2 hover:bg-gray-50 rounded">
+          <input
+            type="checkbox"
+            class="completed-class-checkbox w-4 h-4"
+            value="${cls.id}"
+          >
+          <span class="text-sm">
+            ${cls.className || ''} – ${course ? course.courseName : (cls.courseCode || '')}
+            ${trainerName ? ' – ' + trainerName : ''}
+            ${start || end ? ` (${start}${end ? ' → ' + end : ''})` : ''}
+          </span>
+        </label>
+      `;
+    })
+    .join('');
+
+  container.innerHTML = html;
+}
+
 
     // Password check
     function checkAdminPassword(event) {
@@ -3630,97 +3779,113 @@ function downloadParticipants() {
     }
 
     // Attendance Report functions
-    function generateAttendanceReport() {
-      const fromDate = document.getElementById('reportFromDate').value;
-      const toDate = document.getElementById('reportToDate').value;
-      const selectedClasses = Array.from(document.querySelectorAll('.completed-class-checkbox:checked')).map(cb => cb.value);
+function generateAttendanceReport() {
+  const selectedClassIds = Array.from(
+    document.querySelectorAll('.completed-class-checkbox:checked')
+  ).map(cb => cb.value);
 
-      let completedClasses = getClasses().filter(c => c.classStatus === 'Completed');
+  if (selectedClassIds.length === 0) {
+    showToast('Please select at least one completed class', 'error');
+    return;
+  }
 
-      // Filter by date range if provided
-      if (fromDate && toDate) {
-        completedClasses = completedClasses.filter(c => {
-          const classDate = new Date(c.classStartDate);
-          return classDate >= new Date(fromDate) && classDate <= new Date(toDate);
-        });
-      }
+  const completedClasses = getClasses().filter(
+    c => c.classStatus === 'Completed' && selectedClassIds.includes(c.id)
+  );
 
-      // Filter by selected classes if provided
-      if (selectedClasses.length > 0) {
-        completedClasses = completedClasses.filter(c => selectedClasses.includes(c.id));
-      }
+  if (completedClasses.length === 0) {
+    showToast('No classes match the selection', 'error');
+    return;
+  }
 
-      if (completedClasses.length === 0) {
-        showToast('No classes match the criteria', 'error');
-        return;
-      }
+  const courses = getCourses();
+  const participants = getParticipants();
+  const attendance = getAttendance();
+  const testResults = getTestResults();
 
-      // Build report
-      const courses = getCourses();
-      const participants = getParticipants();
-      const attendance = getAttendance();
-      const testResults = getTestResults();
+  const reportData = [];
 
-      const reportData = [];
-      
-      for (const cls of completedClasses) {
-        const course = courses.find(c => c.courseCode === cls.courseCode);
-        const classAttendance = attendance.filter(a => a.classId === cls.id);
+  for (const cls of completedClasses) {
+    const course = courses.find(c => c.courseCode === cls.courseCode);
 
-        for (const att of classAttendance) {
-          const participant = participants.find(p => p.ic === att.ic);
-          const testResult = testResults.find(t => t.classId === cls.id && t.ic === att.ic);
+    const classAttendance = attendance.filter(a => a.classId === cls.id);
 
-                   reportData.push({
-            className: cls.className,
-            courseName: course ? course.courseName : cls.courseCode,
-            classStartDate: new Date(cls.classStartDate).toLocaleDateString(),
-            classEndDate: new Date(cls.classEndDate).toLocaleDateString(),
-            ic: att.ic,
-            name: participant ? participant.name : 'Unknown',
-            company: participant ? participant.company : '',
-            company_code: participant ? (participant.company_code || '') : '',
-            registrationType: att.registrationType,
-            attendanceStatus: att.attendanceStatus,
-            testScore: testResult ? testResult.testScore : (att.attendanceStatus === 'Absent' ? 0 : 'N/A'),
-            testResult: testResult ? testResult.testResult : (att.attendanceStatus === 'Absent' ? 'Fail' : 'N/A')
-          });
+    for (const att of classAttendance) {
+      const participant = participants.find(p => p.ic === att.ic);
+      const testResult = testResults.find(
+        t => t.classId === cls.id && t.ic === att.ic
+      );
 
-        }
-      }
+      const isAbsent = att.attendanceStatus === 'Absent';
+      const score = testResult
+        ? testResult.testScore
+        : isAbsent
+        ? 0
+        : 'N/A';
+      const resultText = testResult
+        ? testResult.testResult
+        : isAbsent
+        ? 'Fail'
+        : 'N/A';
 
-const header = [
-  'Class Name',
-  'Course Name',
-  'Start Date',
-  'End Date',
-  'IC Number',
-  'Participant Name',
-  'Registration Type',
-  'Attendance',
-  'Test Score',
-  'Test Result'
-];
-
-const rows = reportData.map(r => [
-  r.className,
-  r.courseName,
-  r.classStartDate,
-  r.classEndDate,
-  r.ic,
-  r.name,
-  r.registrationType,
-  r.attendanceStatus,
-  r.testScore,
-  r.testResult
-]);
-
-const csv = [header, ...rows].map(row => row.join(',')).join('\n');
-
-downloadCSV(csv, 'attendance_report.csv');
-showToast('Attendance report downloaded', 'success');
-
+      reportData.push({
+        className: cls.className,
+        courseName: course ? course.courseName : cls.courseCode,
+        classStartDate: cls.classStartDate
+          ? new Date(cls.classStartDate).toLocaleDateString()
+          : '',
+        classEndDate: cls.classEndDate
+          ? new Date(cls.classEndDate).toLocaleDateString()
+          : '',
+        ic: att.ic,
+        name: participant ? participant.name : 'Unknown',
+        company: participant ? participant.company : '',
+        company_code: participant ? (participant.company_code || '') : '',
+        registrationType: att.registrationType,
+        attendanceStatus: att.attendanceStatus,
+        testScore: score,
+        testResult: resultText
+      });
     }
+  }
+
+  if (reportData.length === 0) {
+    showToast('No attendance records found for selected classes', 'error');
+    return;
+  }
+
+  const header = [
+    'Class Name',
+    'Course Name',
+    'Start Date',
+    'End Date',
+    'IC Number',
+    'Participant Name',
+    'Registration Type',
+    'Attendance',
+    'Test Score',
+    'Test Result'
+  ];
+
+  const rows = reportData.map(r => [
+    r.className,
+    r.courseName,
+    r.classStartDate,
+    r.classEndDate,
+    r.ic,
+    r.name,
+    r.registrationType,
+    r.attendanceStatus,
+    r.testScore,
+    r.testResult
+  ]);
+
+  const csv = [header, ...rows].map(row => row.join(',')).join('\n');
+
+  downloadCSV(csv, 'attendance_report.csv');
+  showToast('Attendance report downloaded', 'success');
+}
+
 
     function toggleAllCerts() {
       const allChecked = document.getElementById('allCertsCheckbox').checked;
