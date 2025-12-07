@@ -448,7 +448,7 @@
               <li>• Company Code must be numbers only</li>
               <li>• Invalid rows skipped, valid rows processed</li>
               <li>• Duplicate IC numbers will be skipped</li>
-              <li>• Maximum 999 participants total in system</li>
+              <li>• Maximum 6000 participants total in system</li>
              </ul>
             </div>
            </div>
@@ -1890,7 +1890,7 @@ async function processParticipantMasterUpload() {
       }
 
       const currentCount = participants.length;
-      const maxTotal = 999;
+      const maxTotal = 6000;
 
       for (let i = 0; i < rows.length; i++) {
         const excelRowNumber = i + 2; // row 1 = header
@@ -1931,7 +1931,7 @@ async function processParticipantMasterUpload() {
 // Create / update participant
 if (!participant) {
   if (currentCount + created >= maxTotal) {
-    addInvalid(excelRowNumber, 'Maximum 999 participants reached. This row skipped.');
+    addInvalid(excelRowNumber, 'Maximum 6000 participants reached. This row skipped.');
     continue;
   }
 
