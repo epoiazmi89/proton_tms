@@ -1170,9 +1170,17 @@ function renderCompletedClassesList() {
   const yearSelect = document.getElementById('completedYearFilter');
   const searchInput = document.getElementById('completedClassSearch');
 
+  const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+  // Ambil kelas yang dah tick SEKARANG sebelum kita re-render
+  const selected = new Set(
+    Array.from(container.querySelectorAll('.completed-class-checkbox:checked'))
+      .map(cb => cb.value)
+  );
+
   let filtered = completedClassesCache.slice();
 
-  // Filter ikut Year
+  // Filter ikut Year dulu
   if (yearSelect && yearSelect.value && yearSelect.value !== 'All') {
     filtered = filtered.filter(c => {
       if (!c.classStartDate) return false;
@@ -1184,9 +1192,13 @@ function renderCompletedClassesList() {
     });
   }
 
-  // Filter ikut Search (class name / course / trainer)
-  const q = searchInput ? searchInput.value.trim().toLowerCase() : '';
-  if (q) {
+  // OPTION A:
+  // Kalau search kosong → JANGAN tunjuk semua,
+  // cuma tunjuk kelas yang selected sahaja (supaya list tak panjang & maintain tick)
+  if (!search) {
+    filtered = filtered.filter(c => selected.has(c.id));
+  } else {
+    // Kalau ada search → filter ikut nama class / course / trainer
     const courses = getCourses();
     const trainers = typeof getTrainers === 'function' ? getTrainers() : [];
 
@@ -1197,17 +1209,25 @@ function renderCompletedClassesList() {
       const courseName = course ? (course.courseName || '') : '';
 
       return (
-        (c.className || '').toLowerCase().includes(q) ||
-        (c.courseCode || '').toLowerCase().includes(q) ||
-        courseName.toLowerCase().includes(q) ||
-        trainerName.toLowerCase().includes(q)
+        (c.className || '').toLowerCase().includes(search) ||
+        (c.courseCode || '').toLowerCase().includes(search) ||
+        courseName.toLowerCase().includes(search) ||
+        trainerName.toLowerCase().includes(search)
       );
+    });
+
+    // Pastikan kelas yang dah selected kekal muncul walaupun tak match search baru
+    const selectedClasses = completedClassesCache.filter(c => selected.has(c.id));
+    selectedClasses.forEach(sel => {
+      if (!filtered.some(f => f.id === sel.id)) {
+        filtered.unshift(sel); // letak kat atas
+      }
     });
   }
 
   if (filtered.length === 0) {
     container.innerHTML =
-      '<p class="text-gray-500 text-sm">No completed classes found for selected filter.</p>';
+      '<p class="text-gray-500 text-sm">No classes match your search.</p>';
     return;
   }
 
@@ -1232,6 +1252,7 @@ function renderCompletedClassesList() {
             type="checkbox"
             class="completed-class-checkbox w-4 h-4"
             value="${cls.id}"
+            ${selected.has(cls.id) ? 'checked' : ''}
           >
           <span class="text-sm">
             ${cls.className || ''} – ${course ? course.courseName : (cls.courseCode || '')}
