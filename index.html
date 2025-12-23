@@ -1390,9 +1390,13 @@ async function registerSingleParticipant(event) {
   }
 
   // Check kalau dah register (guna normalizeIC supaya match data lama yg ada dash)
-  const existingAttendance = getAttendance().find(a => {
-    return a.classId === classId && normalizeIC(a.ic) === ic;
-  });
+const existingAttendance = getAttendance().find(a => {
+  return (
+    a.classId === classId &&
+    normalizeIC(a.ic) === normalizeIC(ic)
+  );
+});
+
   if (existingAttendance) {
     btn.innerHTML = originalText;
     btn.disabled = false;
