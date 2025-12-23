@@ -3832,7 +3832,7 @@ function generateAttendanceReport() {
     const classAttendance = attendance.filter(a => a.classId === cls.id);
 
     for (const att of classAttendance) {
-      const participant = participants.find(p => p.ic === att.ic);
+      const participant = getParticipantByIC(att.ic);
       const testResult = testResults.find(
         t => t.classId === cls.id && t.ic === att.ic
       );
